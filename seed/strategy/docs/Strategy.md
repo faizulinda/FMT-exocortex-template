@@ -240,7 +240,7 @@ review: weekly (каждая сессия стратегирования)
 |-------------|--------|----------|
 | ... | ... | ... |
 
-> Приоритизируется на сессии стратегирования. Source-of-truth: Strategy.md + MEMORY.md + WORKPLAN.md.
+> Приоритизируется на сессии стратегирования. Source-of-truth: Strategy.md + MEMORY.md + WP-REGISTRY.md + inbox/WP-*.md.
 
 </details>
 
