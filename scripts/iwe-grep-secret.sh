@@ -173,12 +173,12 @@ scan_layer_env() {
       fi
     else
       warn "tsekh-1 недоступен по ssh (Layer 1 incomplete)"
-      ((INFRA_ERRORS++))
+      ((INFRA_ERRORS++)) || true
     fi
     ((hits += ssh_hits))
   else
     warn "ssh не установлен (Layer 1 tsekh-1 skipped)"
-    ((INFRA_ERRORS++))
+    ((INFRA_ERRORS++)) || true
   fi
 
   log_layer_done "1" "$hits"
@@ -207,10 +207,10 @@ scan_layer_cloud() {
   if [[ -n "$railway_token" ]]; then
     if ! command -v curl &>/dev/null; then
       warn "Railway: curl не установлен (Railway skipped)"
-      ((INFRA_ERRORS++))
+      ((INFRA_ERRORS++)) || true
     elif ! command -v jq &>/dev/null; then
       warn "Railway: jq не установлен (Railway skipped)"
-      ((INFRA_ERRORS++))
+      ((INFRA_ERRORS++)) || true
     else
       # Шаг 1: получаем структуру workspaces → projects → services за один запрос
       local structure
@@ -222,7 +222,7 @@ scan_layer_cloud() {
 
       if [[ -z "$structure" ]] || echo "$structure" | jq -e '.errors' &>/dev/null; then
         warn "Railway API недоступен или токен недействителен (Railway skipped)"
-        ((INFRA_ERRORS++))
+        ((INFRA_ERRORS++)) || true
       else
         local railway_hits=0
         local nws
@@ -272,7 +272,7 @@ scan_layer_cloud() {
 
                 if [[ -z "$vars" ]] || echo "$vars" | jq -e '.errors' &>/dev/null; then
                   warn "Railway: не удалось получить переменные для ${proj_name}/${svc_name}"
-                  ((INFRA_ERRORS++))
+                  ((INFRA_ERRORS++)) || true
                   continue
                 fi
 
@@ -294,7 +294,7 @@ scan_layer_cloud() {
     fi
   else
     warn "RAILWAY_TOKEN не задан и ~/.secrets/railway-api-token не найден (Railway skipped)"
-    ((INFRA_ERRORS++))
+    ((INFRA_ERRORS++)) || true
   fi
 
   # ── Cloudflare Workers ───────────────────────────────────────────────
@@ -308,10 +308,10 @@ scan_layer_cloud() {
     # 0 hits, нет INFRA_ERROR — это известное ограничение, не сбой инфраструктуры
   elif command -v wrangler &>/dev/null; then
     warn "CF_API_TOKEN не задан (CF Workers Layer 2 skipped)"
-    ((INFRA_ERRORS++))
+    ((INFRA_ERRORS++)) || true
   else
     warn "wrangler не установлен (CF Workers Layer 2 skipped)"
-    ((INFRA_ERRORS++))
+    ((INFRA_ERRORS++)) || true
   fi
 
   log_layer_done "2" "$hits"
@@ -325,7 +325,7 @@ scan_layer_pg() {
 
   if ! command -v psql &>/dev/null; then
     warn "psql не установлен (Layer 3 skipped)"
-    ((INFRA_ERRORS++))
+    ((INFRA_ERRORS++)) || true
     log_layer_done "3" "$hits"
     return
   fi
@@ -362,7 +362,7 @@ scan_layer_pg() {
 
   if [[ "$any_db_ok" -eq 0 ]]; then
     warn "Ни одна Neon БД не доступна (Layer 3 incomplete). Проверьте NEON_*_URL."
-    ((INFRA_ERRORS++))
+    ((INFRA_ERRORS++)) || true
   fi
 
   log_layer_done "3" "$hits"
