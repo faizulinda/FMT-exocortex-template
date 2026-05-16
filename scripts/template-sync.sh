@@ -88,5 +88,16 @@ fi
 
 printf '%s\n' "$result" > "$FMT"
 echo "✅ Синхронизировано: CLAUDE.md → FMT/CLAUDE.md"
+
+# 5. Валидация FMT/scripts/ на личные хардкоды
+VALIDATOR="$FMT_DIR/scripts/validate-fmt-scripts.sh"
+if [ -f "$VALIDATOR" ]; then
+    echo ""
+    bash "$VALIDATOR" "$FMT_DIR/scripts" || {
+        echo "⚠️  Личные хардкоды в FMT/scripts/ — исправить до коммита" >&2
+    }
+fi
+
+echo ""
 echo "Следующий шаг:"
 echo "  cd $FMT_DIR && git diff CLAUDE.md && git add CLAUDE.md && git commit"
