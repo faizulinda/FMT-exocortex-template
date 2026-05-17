@@ -5,6 +5,42 @@ All notable changes to FMT-exocortex-template will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/).
 
+## [0.31.0] — 2026-05-17
+
+### Added
+
+- Полный набор promote-скриптов: `script-promote.sh`, `hook-promote.sh`, `skill-promote.sh` + `validate-fmt-scripts.sh` с автовалидацией в `template-sync.sh` (WP-5 L1-flow)
+- Smoke-тест в promote-скриптах — изолированный env с шаблонными переменными
+- `changelog-append.sh` + `changelog-flush.sh` — автоматическое ведение CHANGELOG при каждой промоции
+- S-44: Telegram-напоминания как платформенное правило (правило 8 в CLAUDE.md, WP-5)
+- S-33 (Hooks/Scripts Bypass Gate) промотирован в L1 §2 платформенных правил
+- Knowledge Routing Gate (WP-216 Ф4): `routing-vocab.md` fast-path + DP.SC.036
+- Флаг `--related` и секция «Связки с РП» в шаблоне WP-context + шаг 3.5 в Ритуале
+- cross-platform path leaks detector (WP-5/WP-7 Stability-4)
+- Secret Drift Detector: `iwe-grep-secret.sh` MVP + Railway GraphQL v2 cloud scan (WP-315)
+- Sync-фаза WP Gate resilience — pre-flight + graceful degradation (WP-294)
+- `reflection-template` + Шаги 6.7-6.8 в `personal-guide-render` (WP-309 Ф3)
+- EC-триггер для конфликтов НЭП в `strategy-session`
+- News Lens: шаг 6a Day Open — Haiku subagent синтез новостей
+- q-шкала качества недели в Week Close + якоря q=2 и q=4 (WP-310 Gap-А)
+- Agent Fault Profile: процесс учёта косяков агента + скрипты `agent_fault_remind.py`, `sync_feedback_to_memory.py`
+- Явный L1-flow для всех артефактов в CLAUDE.md (scripts + hooks + skills + CLAUDE.md)
+- WP-283 Ф-H: отказ от WORKPLAN.md hub-and-spoke (антипаттерн, OwnerIntegrity)
+- matrix-CI по `GOVERNANCE_REPO` + detector `.sh` scope + 2 hardcoded fix
+
+### Fixed
+
+- `day-close`: wakatime path `~/.wakatime/wakatime-cli` (CLI не в PATH)
+- hardcoded `DS-strategy` в `dt-collect.sh` + repair-pass в `update.sh`
+- routing slow-path для FMT пользователей: `repo-type-rules.md` вместо `DP.KR.001` (недоступен без Pack)
+- WP-7: guard stale repair против нечитаемого dst под `set -e` + hash-check для stale propagated L1 files
+- `update.sh`: progress counter в step [2] + manifest version sync после apply
+- WP-315: два `set -e` бага в `iwe-grep-secret.sh` + E2E arithmetic zero-eval paths (`|| true`)
+- `load-extensions`: robust workspace resolution + BASH_SOURCE fallback
+- `setup.sh`: `source ~/.iwe-paths` before role install + validate `WORKSPACE_DIR`
+- `wp-sync-bundle`: self-test не зависит от hardcoded WP-294
+- S-44: переименование S-43→S-44 (конфликт нумерации с Agent Fault Profile)
+
 ## [0.30.0] — 2026-05-11
 
 ### Added — WP-5 #12: промоция авторских скриптов как L1 (S-19/S-20/S-21)

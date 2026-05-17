@@ -98,6 +98,9 @@ if [ -f "$VALIDATOR" ]; then
     }
 fi
 
+CHANGELOG_SCRIPT="$FMT_DIR/scripts/changelog-append.sh"
+[[ -f "$CHANGELOG_SCRIPT" ]] && bash "$CHANGELOG_SCRIPT" || true
+
 echo ""
 echo "Следующий шаг:"
-echo "  cd $FMT_DIR && git diff CLAUDE.md && git add CLAUDE.md && git commit"
+echo "  cd $FMT_DIR && git diff CLAUDE.md && git add CLAUDE.md CHANGELOG.md && git commit"

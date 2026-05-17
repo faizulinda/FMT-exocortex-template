@@ -97,5 +97,10 @@ rm -rf "$tmp_dir"
 
 echo ""
 echo "✅ Промотирован: FMT/scripts/$fname"
+
+# Обновить [Unreleased] в CHANGELOG
+CHANGELOG_SCRIPT="$FMT_DIR/scripts/changelog-append.sh"
+[[ -f "$CHANGELOG_SCRIPT" ]] && bash "$CHANGELOG_SCRIPT" || true
+
 echo "Следующий шаг:"
-echo "  cd $FMT_DIR && git add scripts/$fname && git commit -m 'feat: promote $fname to platform'"
+echo "  cd $FMT_DIR && git add scripts/$fname CHANGELOG.md && git commit -m 'feat: promote $fname to platform'"
