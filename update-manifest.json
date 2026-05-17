@@ -1,7 +1,10 @@
 {
-  "version": "0.31.0",
+  "version": "0.32.0",
   "description": "Манифест платформенных файлов FMT-exocortex-template. Используется update.sh для доставки обновлений.",
   "files": [
+    {
+      "path": ".claude/agents/wp-sync-actualizer.md"
+    },
     {
       "path": ".claude/capture-config.sh.example"
     },
@@ -19,9 +22,6 @@
     },
     {
       "path": ".claude/detectors/detector_pattern_awareness.sh"
-    },
-    {
-      "path": ".claude/agents/wp-sync-actualizer.md"
     },
     {
       "path": ".claude/hooks/capture-bus.sh"
@@ -67,6 +67,9 @@
     },
     {
       "path": ".claude/lib/resolve_target_repo.sh"
+    },
+    {
+      "path": ".claude/parity-contract.yaml"
     },
     {
       "path": ".claude/rules/distinctions.md"
@@ -121,6 +124,18 @@
     },
     {
       "path": ".claude/skills/month-close/SKILL.md"
+    },
+    {
+      "path": ".claude/skills/pack-new/SKILL.md"
+    },
+    {
+      "path": ".claude/skills/personal-guide-render/SKILL.md"
+    },
+    {
+      "path": ".claude/skills/personal-guide-render/templates/reflection-template.md"
+    },
+    {
+      "path": ".claude/skills/personal-guide-start/SKILL.md"
     },
     {
       "path": ".claude/skills/run-protocol/SKILL.md"
@@ -189,6 +204,9 @@
       "path": "REPO-TYPE.md"
     },
     {
+      "path": "docs/AGENT-FAULT-PROCESS.md"
+    },
+    {
       "path": "docs/DATA-POLICY.md"
     },
     {
@@ -198,10 +216,19 @@
       "path": "docs/LEARNING-PATH.md"
     },
     {
+      "path": "docs/PACK-CREATION.md"
+    },
+    {
       "path": "docs/PLATFORM-COMPAT.md"
     },
     {
+      "path": "docs/PORTABILITY.md"
+    },
+    {
       "path": "docs/QUICK-START.md"
+    },
+    {
+      "path": "docs/SCRIPT-PROMOTION.md"
     },
     {
       "path": "docs/SETUP-GUIDE.md"
@@ -246,6 +273,30 @@
       "path": "extensions/README.md"
     },
     {
+      "path": "extensions/agent-inbox/README.md"
+    },
+    {
+      "path": "extensions/agent-inbox/SPEC.md"
+    },
+    {
+      "path": "extensions/agent-inbox/scripts/iwe-agent-dispatcher.py"
+    },
+    {
+      "path": "extensions/agent-inbox/templates/_template.md"
+    },
+    {
+      "path": "extensions/agent-inbox/templates/analyze-section.md"
+    },
+    {
+      "path": "extensions/agent-inbox/templates/evolution-cron.md"
+    },
+    {
+      "path": "extensions/agent-inbox/templates/scout-daily.md"
+    },
+    {
+      "path": "extensions/agent-inbox/templates/soak-verify.md"
+    },
+    {
       "path": "memory/MEMORY.md"
     },
     {
@@ -288,6 +339,9 @@
       "path": "memory/roles.md"
     },
     {
+      "path": "memory/routing-vocab.md"
+    },
+    {
       "path": "memory/sota-reference.md"
     },
     {
@@ -295,6 +349,12 @@
     },
     {
       "path": "memory/templates-dayplan.md"
+    },
+    {
+      "path": "pack-templates/digital-platform/02-domain-entities/DP.ROLE.NNN-dispatcher.md"
+    },
+    {
+      "path": "pack-templates/digital-platform/08-service-clauses/DP.SC.NNN-agent-inbox.md"
     },
     {
       "path": "roles/README.md"
@@ -330,6 +390,9 @@
       "path": "roles/extractor/install.sh"
     },
     {
+      "path": "roles/extractor/prompts/git-diff-feed.md"
+    },
+    {
       "path": "roles/extractor/prompts/inbox-check.md"
     },
     {
@@ -337,6 +400,9 @@
     },
     {
       "path": "roles/extractor/prompts/on-demand.md"
+    },
+    {
+      "path": "roles/extractor/prompts/session-close-feed.md"
     },
     {
       "path": "roles/extractor/prompts/session-close.md"
@@ -474,7 +540,19 @@
       "path": "roles/verifier/role.yaml"
     },
     {
+      "path": "scripts/active-wp-sweep.sh"
+    },
+    {
+      "path": "scripts/archive-done-wp.sh"
+    },
+    {
       "path": "scripts/backup-icloud.sh"
+    },
+    {
+      "path": "scripts/changelog-append.sh"
+    },
+    {
+      "path": "scripts/changelog-flush.sh"
     },
     {
       "path": "scripts/check-dirty-repos.sh"
@@ -483,7 +561,16 @@
       "path": "scripts/check-script-collisions.sh"
     },
     {
+      "path": "scripts/check-setup-update-parity.sh"
+    },
+    {
+      "path": "scripts/create-wp.sh"
+    },
+    {
       "path": "scripts/day-close.sh"
+    },
+    {
+      "path": "scripts/hook-promote.sh"
     },
     {
       "path": "scripts/iwe-audit.sh"
@@ -498,10 +585,49 @@
       "path": "scripts/iwe-drift.sh"
     },
     {
+      "path": "scripts/iwe-grep-secret.sh"
+    },
+    {
+      "path": "scripts/memory-active-wp-update.sh"
+    },
+    {
+      "path": "scripts/memory-bleed.sh"
+    },
+    {
+      "path": "scripts/memory-health.sh"
+    },
+    {
+      "path": "scripts/memory-migrate.sh"
+    },
+    {
+      "path": "scripts/memory-validate.sh"
+    },
+    {
       "path": "scripts/migrate-initial-marker.sh"
     },
     {
       "path": "scripts/migrate-to-runtime-target.sh"
+    },
+    {
+      "path": "scripts/script-promote.sh"
+    },
+    {
+      "path": "scripts/server-calendar.sh"
+    },
+    {
+      "path": "scripts/server-news.sh"
+    },
+    {
+      "path": "scripts/setup-extractor-feeders.sh"
+    },
+    {
+      "path": "scripts/skill-promote.sh"
+    },
+    {
+      "path": "scripts/template-sync.sh"
+    },
+    {
+      "path": "scripts/validate-fmt-scripts.sh"
     },
     {
       "path": "scripts/week-draft-append.sh"
@@ -573,10 +699,16 @@
       "path": "templates/strategy-skeleton/CLAUDE.md"
     },
     {
+      "path": "templates/strategy-skeleton/Lifework/README.md"
+    },
+    {
       "path": "templates/strategy-skeleton/README.md"
     },
     {
       "path": "templates/strategy-skeleton/current/README.md"
+    },
+    {
+      "path": "templates/strategy-skeleton/docs/Caliber-artifacts-tracker.md"
     },
     {
       "path": "templates/strategy-skeleton/docs/Dissatisfactions.md"
@@ -606,6 +738,38 @@
     {
       "path": "memory/wp-gate-lesson.md",
       "reason": "consolidated into protocol-work.md, removed in v0.27"
+    },
+    {
+      "path": "roles/strategist/prompts/day-close.md",
+      "reason": "strategist role removed; use .claude/skills/day-close/"
+    },
+    {
+      "path": "roles/strategist/prompts/day-plan.md",
+      "reason": "strategist role removed"
+    },
+    {
+      "path": "roles/strategist/prompts/note-review.md",
+      "reason": "strategist role removed"
+    },
+    {
+      "path": "roles/strategist/prompts/session-prep.md",
+      "reason": "strategist role removed"
+    },
+    {
+      "path": "roles/strategist/prompts/strategy-session.md",
+      "reason": "strategist role removed; use .claude/skills/strategy-session/"
+    },
+    {
+      "path": "roles/strategist/prompts/week-review.md",
+      "reason": "strategist role removed"
+    },
+    {
+      "path": "roles/strategist/scripts/cleanup-processed-notes.py",
+      "reason": "strategist role removed"
+    },
+    {
+      "path": "roles/strategist/scripts/cleanup-processed-notes.sh",
+      "reason": "strategist role removed"
     },
     {
       "path": "strategist-agent/README.md",
@@ -651,6 +815,5 @@
       "path": "strategist-agent/scripts/strategist.sh",
       "reason": "strategist-agent directory removed"
     }
-  ],
-  "changelog": "CHANGELOG.md#0.29.32"
+  ]
 }

@@ -5,6 +5,29 @@ All notable changes to FMT-exocortex-template will be documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/).
 
+
+## [0.32.0] — 2026-05-17
+
+### Added
+
+- **Agent Inbox pack-templates (WP-324, новое):** `pack-templates/digital-platform/08-service-clauses/DP.SC.NNN-agent-inbox.md` + `pack-templates/digital-platform/02-domain-entities/DP.ROLE.NNN-dispatcher.md` — переносные версии обещания и роли с placeholders ({{GOVERNANCE_REPO}}) и комментариями адаптации; новый пилот клонирует и подставляет свои номера DP.SC/DP.ROLE.
+- **`extensions/agent-inbox/scripts/iwe-agent-dispatcher.py`** — диспетчер на headless `claude -p`. Не зависит от RemoteTrigger v1→v2 API issue. Pure-Python stdlib + минимальный YAML frontmatter parser (без зависимостей). Поддерживает env vars для конфигурации (IWE_DISPATCHER_REPO_URL, IWE_DISPATCHER_AUTHOR_EMAIL, etc). Запуск через cron / systemd / launchd / GitHub Actions.
+- **Headless `claude -p` как референсный канал dispatcher** (DP.ROLE.NNN §4 + §7 + SPEC.md §2): не зависит от RemoteTrigger v1→v2 API issue, работает на любой машине с установленным claude CLI; покрывает 80% задач (одна машина = один канал).
+
+### Changed
+
+- `extensions/agent-inbox/SPEC.md` §2 — добавлена таблица каналов запуска (claude CLI / RemoteTrigger / systemd / launchd) с рекомендацией headless CLI как референсной реализации.
+- S-45 (Agent Inbox) остаётся `testing` после расширения объёма: фундамент + script + pack-templates готовы, полная end-to-end automation smoke (4 реальные task по расписанию) deferred — требует Nix systemd unit или cron на исполняющей машине.
+
+### Из накопленных коммитов
+
+- `223fb5f` feat(WP-324): promote S-45 Agent Inbox — extensions/agent-inbox/
+- `63aa96c` feat: changelog automation — changelog-append.sh + changelog-flush.sh + v0.31.0
+- `4002819` feat: promote S-44 to L1 — Telegram reminders as platform rule (rule 8)
+- `0c40b8f` feat: promote S-43 — напоминания через Telegram
+- `9d96a63` fix(changelog): 5 багов из code review субагента
+- `4db37fd` fix: rename S-43→S-44 (Telegram reminders) to avoid numbering conflict with Agent Fault Profile
+
 ## [0.31.0] — 2026-05-17
 
 ### Added

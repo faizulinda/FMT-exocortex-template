@@ -136,6 +136,7 @@ Temporal metadata: `valid_from: YYYY-MM-DD` (обязательно при со�
 
 ### Staging-канал (my IWE → FMT-exocortex-template)
 
+- **S-45 Agent Inbox** (WP-324, 17 мая, расширено session 6) — `inbox/agent/` структура + 5 templates + SPEC + DP.SC.135 + DP.ROLE.045 + `iwe-agent-dispatcher.py` (headless `claude -p`, обход CCR v1→v2 bug). Промотировано в FMT `extensions/agent-inbox/` + `pack-templates/digital-platform/`. Status: testing (полная end-to-end automation smoke на расписании — defer-ред: требует Nix systemd unit или cron).
 
 **Правило добавления:** новое поведение в §9 (авторское) → ОДНОВРЕМЕННО строка в STAGING.md (`status: testing`).
 

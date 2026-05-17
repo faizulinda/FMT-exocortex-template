@@ -37,7 +37,18 @@ inbox/agent/
 └── archive/      # YYYY/ закрытые task'и + результаты
 ```
 
-**Dispatcher CCR-рутина** (часовая) — забирает `tasks/*.md` со `status: pending` и `due ≤ now`, запускает их через `RemoteTrigger create` с инжекцией промпта из шаблона, записывает `task_id ↔ trigger_id` mapping.
+**Dispatcher** (часовая рутина) — забирает `tasks/*.md` со `status: pending` и `due ≤ now`, запускает их через выбранный канал с инжекцией промпта из шаблона, записывает `task_id ↔ trigger_id/run_id` mapping.
+
+**Каналы запуска (выбор зависит от потребностей задачи):**
+
+| Канал | Когда | Реализация |
+|-------|-------|------------|
+| `claude` CLI headless (`claude -p`) | **Референсная (рекомендуемая) реализация** — не зависит от RemoteTrigger API, работает на любой машине с установленным claude CLI | `scripts/iwe-agent-dispatcher.py` в этом extension'е. Запуск через cron / systemd / launchd / GitHub Actions |
+| RemoteTrigger (claude.ai CCR) | Когда задаче нужны MCP-коннекторы (Gmail / Calendar / IWE) | Через API claude.ai. Внимание: API в transition v1→v2 (см. WP-324 17 мая) — новые triggers могут отказываться |
+| systemd на собственном сервере | Heavy workloads, нужен root/sudo | Wrapper-скрипт + systemd unit |
+| local-launchd (mac) | Лёгкие задачи на основной машине | plist в `~/Library/LaunchAgents/` |
+
+**Минимальная конфигурация для одного пилота:** один канал `claude` CLI headless. Покрывает ~80% задач (анализ, summary, retro, разведка).
 
 **Scout CCR-рутина** (дневная) — переиспользует существующий `overnight-scout.sh` паттерн, но кладёт findings в `inbox/agent/scout/YYYY-MM-DD.md` (а не только в DS-agent-workspace).
 
