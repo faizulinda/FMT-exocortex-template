@@ -101,7 +101,7 @@ case "$HOOK_EVENT" in
         ARTIFACTS="[]"
         if command -v git >/dev/null 2>&1 && [ -n "$CWD" ] && [ -d "$CWD/.git" ]; then
             # Коммиты этой сессии (heuristic: за последний час).
-            COMMITS=$(cd "$CWD" && git log --since="1 hour ago" --pretty=format:"git:commit:%h" 2>/dev/null | head -5 || true)
+            COMMITS=$(cd "$CWD" && git log --since="1 hour ago" --pretty=tformat:"git:commit:%h" 2>/dev/null | head -5 || true)
             ARTIFACTS=$(echo "$COMMITS" | jq -R -s -c 'split("\n") | map(select(length > 0))' 2>/dev/null || echo "[]")
         fi
 
