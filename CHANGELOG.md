@@ -24,6 +24,7 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - News Lens: шаг 6a Day Open — Haiku subagent синтез новостей
 - q-шкала качества недели в Week Close + якоря q=2 и q=4 (WP-310 Gap-А)
 - Agent Fault Profile: процесс учёта косяков агента + скрипты `agent_fault_remind.py`, `sync_feedback_to_memory.py`
+- S-45 Agent Inbox (WP-324): `extensions/agent-inbox/` структура (tasks/results/scout/templates/archive) + SPEC.md + README.md + 5 шаблонов промптов (analyze-section, scout-daily, evolution-cron, soak-verify, _template); реализация DP.SC.135 + DP.ROLE.045 в PACK-digital-platform; status: testing (CCR-автоматизация ждёт RemoteTrigger v2 API spec)
 - Явный L1-flow для всех артефактов в CLAUDE.md (scripts + hooks + skills + CLAUDE.md)
 - WP-283 Ф-H: отказ от WORKPLAN.md hub-and-spoke (антипаттерн, OwnerIntegrity)
 - matrix-CI по `GOVERNANCE_REPO` + detector `.sh` scope + 2 hardcoded fix
