@@ -585,6 +585,9 @@
       "path": "scripts/create-wp.sh"
     },
     {
+      "path": "scripts/pack-ci-install.sh"
+    },
+    {
       "path": "scripts/day-close.sh"
     },
     {
