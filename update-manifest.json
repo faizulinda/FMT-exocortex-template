@@ -1,5 +1,5 @@
 {
-  "version": "0.33.0",
+  "version": "Unreleased",
   "description": "Манифест платформенных файлов FMT-exocortex-template. Используется update.sh для доставки обновлений.",
   "files": [
     {
@@ -157,6 +157,12 @@
     },
     {
       "path": ".claude/skills/verify/SKILL.md"
+    },
+    {
+      "path": ".claude/skills/verify/verify-fpf-subsection.md"
+    },
+    {
+      "path": ".claude/skills/verify/verify-pedagogy-subsection.md"
     },
     {
       "path": ".claude/skills/week-close/SKILL.md"
@@ -361,6 +367,15 @@
     },
     {
       "path": "memory/templates-dayplan.md"
+    },
+    {
+      "path": "pack-templates/.github/README.md"
+    },
+    {
+      "path": "pack-templates/.github/scripts/check-pack-collisions.sh"
+    },
+    {
+      "path": "pack-templates/.github/workflows/pack-lint.yml"
     },
     {
       "path": "pack-templates/digital-platform/02-domain-entities/DP.ROLE.NNN-dispatcher.md"
@@ -585,9 +600,6 @@
       "path": "scripts/create-wp.sh"
     },
     {
-      "path": "scripts/pack-ci-install.sh"
-    },
-    {
       "path": "scripts/day-close.sh"
     },
     {
@@ -609,6 +621,9 @@
       "path": "scripts/iwe-grep-secret.sh"
     },
     {
+      "path": "scripts/iwe-trace.py"
+    },
+    {
       "path": "scripts/memory-active-wp-update.sh"
     },
     {
@@ -628,6 +643,9 @@
     },
     {
       "path": "scripts/migrate-to-runtime-target.sh"
+    },
+    {
+      "path": "scripts/pack-ci-install.sh"
     },
     {
       "path": "scripts/script-promote.sh"
