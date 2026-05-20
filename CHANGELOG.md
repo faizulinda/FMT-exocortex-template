@@ -10,7 +10,10 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
-## [Unreleased] — обновлено 2026-05-19
+## [Unreleased]
+
+
+## [0.34.0] — 2026-05-20
 
 ### Added
 
@@ -22,6 +25,9 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - `c180e6a` feat(WP-316 Ф6): promote Agent Fault Profile v0.33.0 — scripts + extensions
 - `de23341` feat(strategy-session): добавить шаги 1b (KE-кандидаты) и 1c (Мир) в открытие недели
 - `8a72b50` feat(WP-295): agent-trace-recorder writer hooks (Ф1 шаг 5)
+- `72f7572` fix(WP-7): hook paths — $CLAUDE_PROJECT_DIR/ convention for all hook commands
+- `2136141` feat(WP-7): settings-promote.sh + pre-commit HOOK-PATH-CONVENTION gate
+- `b00ef4c` fix(settings-promote): inline jq check вместо полного validate-fmt-scripts.sh
 
 ### Fixed
 
