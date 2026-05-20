@@ -181,22 +181,20 @@ fi
 # params.yaml — конфиг
 emit_inventory_row "params.yaml" 1 ""
 
-# Governance-репо (DS-strategy или переопределённый через GOVERNANCE_DIR)
-GOVERNANCE_DIR="${GOVERNANCE_DIR:-$IWE_ROOT/DS-strategy}"
-GOVERNANCE_NAME="$(basename "$GOVERNANCE_DIR")"
-DS_DIR="$GOVERNANCE_DIR"
+# DS-strategy — директория с .git
+DS_DIR="$IWE_ROOT/${GOVERNANCE_REPO:-DS-strategy}"
 TOTAL=$((TOTAL + 1))
 if [ -d "$DS_DIR" ]; then
     if [ -d "$DS_DIR/.git" ]; then
         FOUND=$((FOUND + 1))
-        printf "| \`%s\` | %s | %s |\n" "${GOVERNANCE_NAME}/" "✅" "git-репо (is_git=true)"
+        printf "| \`%s\` | %s | %s |\n" "DS-strategy/" "✅" "git-репо (is_git=true)"
     else
         OPTIONAL_MISSING=$((OPTIONAL_MISSING + 1))
-        printf "| \`%s\` | %s | %s |\n" "${GOVERNANCE_NAME}/" "⚠️" "директория есть, но не git-репо"
+        printf "| \`%s\` | %s | %s |\n" "DS-strategy/" "⚠️" "директория есть, но не git-репо"
     fi
 else
     CRITICAL_MISSING=$((CRITICAL_MISSING + 1))
-    printf "| \`%s\` | %s | %s |\n" "${GOVERNANCE_NAME}/" "❌" "директория не найдена"
+    printf "| \`%s\` | %s | %s |\n" "DS-strategy/" "❌" "директория не найдена"
 fi
 
 echo ""
