@@ -13,6 +13,13 @@ Versioning: [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 
+## [0.34.1] — 2026-05-21
+
+### Fixed
+
+- `8a231a3` fix(CI): закрыть 3 реальных блокера Validate Template — regex detector #9, hardcoded DS-strategy, smoke-test gh auth, install.sh portability
+
+
 ## [0.34.0] — 2026-05-20
 
 ### Added
