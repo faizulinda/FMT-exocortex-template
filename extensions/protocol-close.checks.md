@@ -10,7 +10,7 @@
 set -eu
 
 IWE_WORKSPACE="${IWE_WORKSPACE:-${WORKSPACE_DIR:-$HOME/IWE}}"
-REPORTS_DIR="${IWE_WORKSPACE:-$HOME/IWE}/governance/inbox/extraction-reports"
+REPORTS_DIR="${IWE_WORKSPACE}/${GOVERNANCE_REPO}/inbox/extraction-reports"
 
 # Count extraction-reports with status: pending-review
 PENDING=$(grep -l "status: pending-review" "$REPORTS_DIR"/*.md 2>/dev/null | wc -l)
