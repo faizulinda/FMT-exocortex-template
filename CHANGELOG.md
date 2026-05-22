@@ -11,7 +11,7 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
-## [Unreleased] — обновлено 2026-05-21
+## [Unreleased] — обновлено 2026-05-22
 
 ### Added
 
@@ -31,6 +31,7 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `2c92438` fix(smoke-test): define warn() — undefined function broke Validate Template CI
 - `16b468a` fix(ci): setup.sh SETUP_CI=1 не требует claude/node/npm как prerequisites
 - `7f3fba0` fix(WP-348): SIGPIPE-баг в migrate-skills-to-v2.sh has_field()
 - `8a231a3` fix(CI): закрыть 3 реальных блокера Validate Template
