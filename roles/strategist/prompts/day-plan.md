@@ -21,8 +21,16 @@ if [ ! -f "$DAYPLAN_FILE" ]; then
       exit 0
     fi
   else
-    echo "WARN: day-open-scaffold.sh not found at $_IWE/scripts/ — создаю пустой DayPlan, PENDING-маркеры заполнит LLM"
-    touch "$DAYPLAN_FILE"
+    echo "WARN: day-open-scaffold.sh not found at $_IWE/scripts/ — создаю минимальный DayPlan, PENDING-маркеры заполнит LLM"
+    cat > "$DAYPLAN_FILE" <<FRONTMATTER
+---
+type: daily-plan
+date: $DATE
+status: active
+agent: Стратег
+generated_by: fallback (scaffold missing)
+---
+FRONTMATTER
   fi
 fi
 ```
