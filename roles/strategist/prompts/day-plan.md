@@ -6,11 +6,12 @@
 
 ```bash
 DATE=$(date +%Y-%m-%d)
-DAYPLAN_FILE="$HOME/IWE/{{GOVERNANCE_REPO}}/current/DayPlan $DATE.md"
+_IWE="${IWE_WORKSPACE:-$HOME/IWE}"
+DAYPLAN_FILE="$_IWE/{{GOVERNANCE_REPO}}/current/DayPlan $DATE.md"
 
 # Если файла нет — создать через scaffold
 if [ ! -f "$DAYPLAN_FILE" ]; then
-  bash "$HOME/IWE/scripts/day-open-scaffold.sh" "$DATE" > "$DAYPLAN_FILE"
+  bash "$_IWE/scripts/day-open-scaffold.sh" "$DATE" > "$DAYPLAN_FILE"
   SCAFFOLD_EXIT=$?
   if [ "$SCAFFOLD_EXIT" -eq 2 ]; then
     rm -f "$DAYPLAN_FILE"
@@ -67,7 +68,7 @@ fi
 ### Шаг 7 — сохранение и коммит
 
 ```bash
-cd "$HOME/IWE/{{GOVERNANCE_REPO}}"
+cd "${IWE_WORKSPACE:-$HOME/IWE}/{{GOVERNANCE_REPO}}"
 git add current/DayPlan*.md
 git commit -m "day-plan: $DATE автономный полный (strategist morning)"
 git pull --rebase  # на случай если Mac тоже что-то закоммитил
@@ -82,13 +83,13 @@ git push
 - ✅ Все решения принимай по skill /day-open (`{{WORKSPACE_DIR}}/.claude/skills/day-open/SKILL.md`)
 - ✅ Финал: SUCCESS + git push (Telegram-уведомление отправляет strategist.sh автоматически после завершения)
 
-## Источники (на сервере tsekh-1)
+## Источники
 
 - HUB: `{{WORKSPACE_DIR}}/{{GOVERNANCE_REPO}}/current/`
 - SPOKES: `{{WORKSPACE_DIR}}/*/WORKPLAN.md`
-- MEMORY: `~/.claude/projects/-Users-tseren-IWE/memory/`
+- MEMORY: `~/.claude/projects/{{CLAUDE_PROJECT_SLUG}}/memory/`
 - Skill: `{{WORKSPACE_DIR}}/.claude/skills/day-open/SKILL.md`
-- Templates: `~/.claude/projects/-Users-tseren-IWE/memory/templates-dayplan.md`
+- Templates: `~/.claude/projects/{{CLAUDE_PROJECT_SLUG}}/memory/templates-dayplan.md`
 - Scaffold: `{{WORKSPACE_DIR}}/scripts/day-open-scaffold.sh`
 - Extensions: `{{WORKSPACE_DIR}}/extensions/day-open.before.md`, `.after.md`, `.checks.md`
 
