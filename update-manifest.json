@@ -84,6 +84,9 @@
       "path": ".claude/rules/formatting.md"
     },
     {
+      "path": ".claude/rules/wp-scope.md"
+    },
+    {
       "path": ".claude/runtime-overlay.yaml"
     },
     {
@@ -94,6 +97,9 @@
     },
     {
       "path": ".claude/settings.json"
+    },
+    {
+      "path": ".claude/skills/_template/SKILL.md"
     },
     {
       "path": ".claude/skills/apply-captures/SKILL.md"
@@ -255,6 +261,9 @@
       "path": "docs/adr/ADR-003-hosting-platform.md"
     },
     {
+      "path": "docs/inter-agent-handoff.md"
+    },
+    {
       "path": "docs/migrations/strategy-v0.27.0.md"
     },
     {
@@ -378,10 +387,19 @@
       "path": "pack-templates/.github/workflows/pack-lint.yml"
     },
     {
+      "path": "pack-templates/digital-platform/02-domain-entities/DP.ROLE.NNN-constraint-analyst.md"
+    },
+    {
       "path": "pack-templates/digital-platform/02-domain-entities/DP.ROLE.NNN-dispatcher.md"
     },
     {
+      "path": "pack-templates/digital-platform/04-work-products/DP.WP.NNN-stage-dependency-map.md"
+    },
+    {
       "path": "pack-templates/digital-platform/08-service-clauses/DP.SC.NNN-agent-inbox.md"
+    },
+    {
+      "path": "pack-templates/digital-platform/08-service-clauses/DP.SC.NNN-constraint-analysis.md"
     },
     {
       "path": "roles/README.md"
@@ -456,6 +474,12 @@
       "path": "roles/strategist/prompts/check-plan.md"
     },
     {
+      "path": "roles/strategist/prompts/day-close.md"
+    },
+    {
+      "path": "roles/strategist/prompts/day-plan.md"
+    },
+    {
       "path": "roles/strategist/prompts/evening.md"
     },
     {
@@ -466,6 +490,12 @@
     },
     {
       "path": "roles/strategist/prompts/strategy-session-weekly.md"
+    },
+    {
+      "path": "roles/strategist/prompts/strategy-session.md"
+    },
+    {
+      "path": "roles/strategist/prompts/week-review.md"
     },
     {
       "path": "roles/strategist/role.yaml"
@@ -579,10 +609,16 @@
       "path": "scripts/check-dirty-repos.sh"
     },
     {
+      "path": "scripts/check-manifest-coverage.py"
+    },
+    {
       "path": "scripts/check-script-collisions.sh"
     },
     {
       "path": "scripts/check-setup-update-parity.sh"
+    },
+    {
+      "path": "scripts/create-skill.sh"
     },
     {
       "path": "scripts/create-wp.sh"
@@ -591,7 +627,16 @@
       "path": "scripts/day-close.sh"
     },
     {
+      "path": "scripts/generate-skills-catalog.sh"
+    },
+    {
+      "path": "scripts/headless-runner.sh"
+    },
+    {
       "path": "scripts/hook-promote.sh"
+    },
+    {
+      "path": "scripts/iwe-agent-dispatcher.py"
     },
     {
       "path": "scripts/iwe-audit.sh"
@@ -630,6 +675,9 @@
       "path": "scripts/migrate-initial-marker.sh"
     },
     {
+      "path": "scripts/migrate-skills-to-v2.sh"
+    },
+    {
       "path": "scripts/migrate-to-runtime-target.sh"
     },
     {
@@ -645,10 +693,16 @@
       "path": "scripts/server-news.sh"
     },
     {
+      "path": "scripts/settings-promote.sh"
+    },
+    {
       "path": "scripts/setup-extractor-feeders.sh"
     },
     {
       "path": "scripts/skill-promote.sh"
+    },
+    {
+      "path": "scripts/skills-pull.sh"
     },
     {
       "path": "scripts/sync_feedback_to_memory.py"
@@ -658,6 +712,9 @@
     },
     {
       "path": "scripts/validate-fmt-scripts.sh"
+    },
+    {
+      "path": "scripts/validate-skill.sh"
     },
     {
       "path": "scripts/week-draft-append.sh"

@@ -239,6 +239,13 @@ jobs:
           rm -rf "$TMP"
           exit $FAIL
 
+      # B2 gap closure: проверяем что все файлы репо покрыты update-manifest.json.
+      # Новый файл без записи в manifest = обновление не доедет до пользователей.
+      # Исправление: добавить в manifest["files"] или manifest["excluded_paths"].
+      - name: Check manifest completeness (B2)
+        run: |
+          git ls-files | python3 scripts/check-manifest-coverage.py update-manifest.json
+
       # 7. Только допустимые placeholders
       - name: Check placeholders are valid
         run: |

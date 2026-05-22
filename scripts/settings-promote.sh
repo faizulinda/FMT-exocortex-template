@@ -101,16 +101,9 @@ fi
 # Валидация JSON перед записью
 echo "$UPDATED" | jq . > /dev/null 2>&1 || { echo "❌ Результат невалидный JSON" >&2; exit 1; }
 
-# Проверка hook-path конвенции: все .claude/hooks/ команды → $CLAUDE_PROJECT_DIR/
-# (inline jq — не вызываем полный validate-fmt-scripts.sh, чтобы не ловить
-# pre-existing DS-strategy в scripts/*.sh при отсутствии IWE_GOVERNANCE_REPO)
-bad_cmds=$(echo "$UPDATED" | jq -r \
-    '.hooks // {} | to_entries[] | .value[] | .hooks[]? | .command // empty' \
-    | grep -E '\.claude/hooks/' \
-    | grep -vE '^\$CLAUDE_PROJECT_DIR/' || true)
-if [[ -n "$bad_cmds" ]]; then
-    echo "❌ Хук-команды без \$CLAUDE_PROJECT_DIR/ префикса:" >&2
-    echo "$bad_cmds" | sed 's/^/   /' >&2
+# Проверка hook-path конвенции через validate-fmt-scripts.sh --settings-json.
+# --settings-json запускает только проверку 3 (settings.json) — не затрагивает скрипты.
+if ! bash "$FMT_DIR/scripts/validate-fmt-scripts.sh" --settings-json; then
     exit 1
 fi
 
