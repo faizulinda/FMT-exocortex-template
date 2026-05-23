@@ -16,13 +16,15 @@
 
 set -uo pipefail
 
-SRC="${1:-}"
+SRC=""
 dry_run=false
 force=false
-for arg in "${@:2}"; do
+for arg in "$@"; do
     case "$arg" in
         --dry-run) dry_run=true ;;
         --force)   force=true ;;
+        --*)       echo "Неизвестный флаг: $arg" >&2; exit 1 ;;
+        *)         if [[ -z "$SRC" ]]; then SRC="$arg"; else echo "Слишком много аргументов" >&2; exit 1; fi ;;
     esac
 done
 
@@ -73,8 +75,10 @@ if ! $force && git -C "$FMT_DIR" rev-parse HEAD >/dev/null 2>&1; then
             echo "   Вероятно, в FMT уже есть фиксы, которых нет в вашей копии." >&2
             echo "   Промоция перетрёт эти изменения." >&2
             echo "" >&2
-            echo "   Посмотреть разницу:" >&2
-            echo "     diff <(git -C \"$FMT_DIR\" show HEAD:scripts/$fname) <(bash \"$0\" \"$SRC\" --dry-run | tail -n +3 | head -n -1)" >&2
+            echo "   Текущая версия в FMT HEAD:" >&2
+            echo "     git -C \"$FMT_DIR\" show HEAD:scripts/$fname" >&2
+            echo "   Что будет промотировано (после подстановок):" >&2
+            echo "     bash \"$0\" \"$SRC\" --dry-run" >&2
             echo "" >&2
             echo "   Продолжить (если разница намеренная):" >&2
             echo "     $0 \"$SRC\" --force" >&2
