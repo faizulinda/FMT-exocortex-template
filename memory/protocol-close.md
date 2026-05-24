@@ -44,7 +44,14 @@ schema_version: 1
 
 2. **WP Context File** — обновить секцию «Осталось» (structured формат):
    - in_progress → structured handoff
-   - done → пометить `status: done`
+   - done → пометить `status: done` **→ и немедленно архивировать:**
+     ```bash
+     git mv inbox/WP-N archive/wp-contexts/WP-N   # папка
+     git mv inbox/WP-N-slug.md archive/wp-contexts/WP-N-slug.md  # файл
+     # patch frontmatter: status: archived, archived_at: YYYY-MM-DD
+     # нет results_in → добавить results_not_captured: true
+     ```
+     *(Реализует DP.SC.033 инвариант: done-РП не остаётся в inbox дольше одного Day Close)*
    - Незавершённое → context file. Идея → `MAPSTRATEGIC.md`. Зерно → `drafts/draft-list.md`
 
 2.5. **KE** — прочитать поле «Что узнали» в «Осталось». Маршрутизировать СЕЙЧАС:
