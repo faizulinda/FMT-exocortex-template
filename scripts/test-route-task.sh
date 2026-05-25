@@ -19,10 +19,10 @@ run_test() {
     set -e
     if [[ "$actual" -eq "$expected" ]]; then
         echo "PASS (exit $actual)"
-        ((PASS++))
+        ((PASS++)) || true
     else
         echo "FAIL: expected exit $expected, got $actual"
-        ((FAIL++))
+        ((FAIL++)) || true
     fi
     echo ""
 }
