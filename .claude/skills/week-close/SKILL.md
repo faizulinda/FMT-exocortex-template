@@ -71,9 +71,21 @@ bash {{WORKSPACE_DIR}}/scripts/server-calendar.sh --week $(date -v-mon +%Y-%m-%d
 
 ### 7. Платформенные шаги
 
-#### 7a. Бэкап IWE в iCloud
+#### 7a. Проверка здоровья бэкапов
 
-> Условный шаг: только macOS с iCloud Drive.
+> Обязательный шаг перед бэкапом. Запускает `iwe-backup-check.sh` (WP-317 supplement).
+
+```bash
+bash ${IWE_SCRIPTS}/iwe-backup-check.sh
+```
+
+Если вернул ❌ (exit 2) — устранить критичные gaps ДО бэкапа (устаревший бэкап >14 дней, нет iCloud).  
+Если вернул ⚠️ (exit 1) — зафиксировать warnings в WeekReport, продолжить.  
+Если ✅ (exit 0) — бэкап в норме.
+
+#### 7b. Бэкап IWE в iCloud
+
+> Условный шаг: только macOS с iCloud Drive. Запускать ТОЛЬКО если 7a не вернул ❌.
 
 ```bash
 ${IWE_SCRIPTS}/backup-icloud.sh
@@ -81,7 +93,7 @@ ${IWE_SCRIPTS}/backup-icloud.sh
 
 Архив всех файлов IWE (без `.git`, `node_modules`, `.venv`) → iCloud Drive. Хранит 4 последних архива.
 
-#### 7b. Скан незакоммиченных файлов
+#### 7c. Скан незакоммиченных файлов
 
 ```bash
 ${IWE_SCRIPTS}/check-dirty-repos.sh
