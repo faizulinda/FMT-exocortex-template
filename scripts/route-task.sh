@@ -7,8 +7,8 @@
 # запускает нужный исполнитель (script | haiku | sonnet | opus | mcp-direct).
 #
 # Usage:
-#   route-task.sh --skill <skill-name> [--args "..."]   # по имени скилла
-#   route-task.sh --tag <routing-tag>  [--args "..."]   # по routing-тегу
+#   route-task.sh --skill <skill-name> [--args "..."]   # strict: no fallback
+#   route-task.sh --tag  <routing-tag>  [--args "..."]   # flex: fallback to Sonnet on miss
 #   route-task.sh --list                                 # показать каталог
 #   route-task.sh --validate                             # проверить каталог
 #
@@ -20,6 +20,7 @@ IWE_DIR="${IWE_DIR:-$HOME/IWE}"
 GOV_REPO="${IWE_GOVERNANCE_REPO:-DS-strategy}"
 CATALOG="${IWE_EXECUTOR_CATALOG:-${IWE_DIR}/${GOV_REPO}/scripts/executor-catalog.yaml}"
 VALID_EXECUTORS=("script" "haiku" "sonnet" "opus" "mcp-direct")
+AUDIT_LOG="${IWE_ROUTER_AUDIT:-${IWE_DIR}/${GOV_REPO}/logs/pilot-audit.tsv}"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,6 +39,18 @@ require_catalog() {
     if [[ ! -f "$CATALOG" ]]; then
         die "executor-catalog.yaml not found: $CATALOG"
     fi
+}
+
+# ---------------------------------------------------------------------------
+# Audit log
+# ---------------------------------------------------------------------------
+
+log_audit() {
+    local ts="$1" skill="$2" executor="$3" tokens="$4" exit_code="$5"
+    local audit_dir
+    audit_dir="$(dirname "$AUDIT_LOG")"
+    [[ -d "$audit_dir" ]] || mkdir -p "$audit_dir"
+    printf "%s\t%s\t%s\t%s\t%s\n" "$ts" "$skill" "$executor" "$tokens" "$exit_code" >> "$AUDIT_LOG"
 }
 
 # ---------------------------------------------------------------------------
@@ -78,6 +91,7 @@ run_script() {
     local skill_name="$1"
     local script_path="$2"
     local args="${3:-}"
+    local allow_fallback="${4:-true}"
 
     # Resolve relative path from IWE_DIR
     if [[ "$script_path" != /* ]]; then
@@ -85,6 +99,10 @@ run_script() {
     fi
 
     if [[ ! -f "$script_path" ]]; then
+        if [[ "$allow_fallback" == "false" ]]; then
+            warn "script not found: $script_path (skill=$skill_name)"
+            exit 2
+        fi
         warn "script not found: $script_path (skill=$skill_name)"
         warn "Script may be aspirational (pending Ф12 implementation)."
         warn "Falling back to Haiku LLM executor."
@@ -133,11 +151,16 @@ run_mcp_direct() {
 dispatch_skill() {
     local skill_name="$1"
     local args="${2:-}"
+    local allow_fallback="${3:-true}"
 
     local lookup_result lookup_exit
     lookup_result=$(lookup_skill "$skill_name") && lookup_exit=0 || lookup_exit=$?
     if [[ $lookup_exit -ne 0 ]]; then
         if [[ $lookup_exit -eq 3 ]]; then
+            if [[ "$allow_fallback" == "false" ]]; then
+                warn "skill '$skill_name' not in catalog."
+                exit 3
+            fi
             warn "skill '$skill_name' not in catalog. Falling back to Sonnet."
             run_sonnet "$skill_name" "$args"
             return 0
@@ -150,12 +173,16 @@ dispatch_skill() {
     script_path=$(echo "$lookup_result" | grep "^script_path=" | cut -d= -f2- || true)
 
     case "$executor" in
-        script)     run_script "$skill_name" "$script_path" "$args" ;;
+        script)     run_script "$skill_name" "$script_path" "$args" "$allow_fallback" ;;
         haiku)      run_haiku  "$skill_name" "$args" ;;
         sonnet)     run_sonnet "$skill_name" "$args" ;;
         opus)       run_opus   "$skill_name" "$args" ;;
         mcp-direct) run_mcp_direct "$skill_name" "$args" ;;
         *)
+            if [[ "$allow_fallback" == "false" ]]; then
+                warn "unknown executor '$executor' for skill '$skill_name'."
+                exit 4
+            fi
             warn "unknown executor '$executor' for skill '$skill_name'. Falling back to Sonnet."
             run_sonnet "$skill_name" "$args"
             ;;
@@ -230,11 +257,12 @@ main() {
     local skill_name=""
     local args=""
     local mode="dispatch"
+    local allow_fallback="true"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --skill)    skill_name="$2"; shift 2 ;;
-            --tag)      skill_name="$2"; shift 2 ;;  # alias
+            --skill)    skill_name="$2"; allow_fallback="false"; shift 2 ;;
+            --tag)      skill_name="$2"; allow_fallback="true";  shift 2 ;;
             --args)     args="$2"; shift 2 ;;
             --list)     mode="list"; shift ;;
             --validate) mode="validate"; shift ;;
@@ -250,8 +278,8 @@ main() {
             grep "^# " "$0" | head -20 | sed 's/^# //'
             ;;
         dispatch)
-            [[ -z "$skill_name" ]] && die "required: --skill <name>"
-            dispatch_skill "$skill_name" "$args"
+            [[ -z "$skill_name" && "$allow_fallback" == "false" ]] && die "required: --skill <name>"
+            dispatch_skill "$skill_name" "$args" "$allow_fallback"
             ;;
     esac
 }
