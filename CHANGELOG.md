@@ -12,10 +12,12 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
-## [Unreleased] — обновлено 2026-05-24
+
+## [Unreleased] — обновлено 2026-05-25
 
 ### Added
 
+- `a4260e7` feat(day-open): scaffold PENDING markers + protocol-close WP archiving step
 - `02bfe7d` feat: guard в script-promote.sh — блокирует перезапись фиксов FMT
 - `75d15f0` feat(WP-347 Ф3+Ф4): docs/RELEASE-PROCESS.md + правило валидатора в SCRIPT-PROMOTION.md
 - `95817fa` feat(WP-347 Ф2): CI-конвейер: B2 manifest CI + B8 set-e детектор + гранулярные флаги
