@@ -27,8 +27,8 @@ run_test() {
     echo ""
 }
 
-# 1. Happy path — known script skill (consent)
-run_test "T1: --skill consent (script, exists)" 2 --skill consent
+# 1. Known script skill (consent) — script exists, fails on env var (exit from script, not router)
+run_test "T1: --skill consent (script exists, router dispatches correctly)" 2 --skill consent
 
 # 2. Unknown skill — strict (--skill)
 run_test "T2: --skill unknown_skill (strict → exit 3)" 3 --skill unknown_skill

@@ -33,6 +33,9 @@ require_python() {
     if ! command -v python3 &>/dev/null; then
         die "python3 not found — required for catalog lookup"
     fi
+    if ! python3 -c "import yaml" &>/dev/null; then
+        die "PyYAML not found — required for catalog lookup (pip install pyyaml)"
+    fi
 }
 
 require_catalog() {
@@ -46,11 +49,11 @@ require_catalog() {
 # ---------------------------------------------------------------------------
 
 log_audit() {
-    local ts="$1" skill="$2" executor="$3" tokens="$4" exit_code="$5"
+    local ts="$1" skill="$2" executor="$3" exit_code="$4"
     local audit_dir
     audit_dir="$(dirname "$AUDIT_LOG")"
     [[ -d "$audit_dir" ]] || mkdir -p "$audit_dir"
-    printf "%s\t%s\t%s\t%s\t%s\n" "$ts" "$skill" "$executor" "$tokens" "$exit_code" >> "$AUDIT_LOG"
+    printf "%s\t%s\t%s\t%s\n" "$ts" "$skill" "$executor" "$exit_code" >> "$AUDIT_LOG"
 }
 
 # ---------------------------------------------------------------------------
@@ -101,12 +104,14 @@ run_script() {
     if [[ ! -f "$script_path" ]]; then
         if [[ "$allow_fallback" == "false" ]]; then
             warn "script not found: $script_path (skill=$skill_name)"
+            log_audit "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$skill_name" "script" "2"
             exit 2
         fi
         warn "script not found: $script_path (skill=$skill_name)"
         warn "Script may be aspirational (pending Ф12 implementation)."
         warn "Falling back to Haiku LLM executor."
         run_haiku "$skill_name" "$args"
+        log_audit "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$skill_name" "haiku" "0"
         return
     fi
 
@@ -116,10 +121,11 @@ run_script() {
 
     echo "[router] skill=$skill_name executor=script path=$script_path"
     if [[ -n "$args" ]]; then
-        bash "$script_path" $args
+        bash "$script_path" "$args"
     else
         bash "$script_path"
     fi
+    log_audit "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$skill_name" "script" "0"
 }
 
 run_llm() {
@@ -152,6 +158,7 @@ dispatch_skill() {
     local skill_name="$1"
     local args="${2:-}"
     local allow_fallback="${3:-true}"
+    local ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
     local lookup_result lookup_exit
     lookup_result=$(lookup_skill "$skill_name") && lookup_exit=0 || lookup_exit=$?
@@ -159,10 +166,12 @@ dispatch_skill() {
         if [[ $lookup_exit -eq 3 ]]; then
             if [[ "$allow_fallback" == "false" ]]; then
                 warn "skill '$skill_name' not in catalog."
+                log_audit "$ts" "$skill_name" "unknown" "3"
                 exit 3
             fi
             warn "skill '$skill_name' not in catalog. Falling back to Sonnet."
             run_sonnet "$skill_name" "$args"
+            log_audit "$ts" "$skill_name" "sonnet" "0"
             return 0
         fi
         die "catalog lookup failed (exit=$lookup_exit)"
@@ -173,18 +182,34 @@ dispatch_skill() {
     script_path=$(echo "$lookup_result" | grep "^script_path=" | cut -d= -f2- || true)
 
     case "$executor" in
-        script)     run_script "$skill_name" "$script_path" "$args" "$allow_fallback" ;;
-        haiku)      run_haiku  "$skill_name" "$args" ;;
-        sonnet)     run_sonnet "$skill_name" "$args" ;;
-        opus)       run_opus   "$skill_name" "$args" ;;
-        mcp-direct) run_mcp_direct "$skill_name" "$args" ;;
+        script)
+            run_script "$skill_name" "$script_path" "$args" "$allow_fallback"
+            ;;
+        haiku)
+            run_haiku "$skill_name" "$args"
+            log_audit "$ts" "$skill_name" "haiku" "0"
+            ;;
+        sonnet)
+            run_sonnet "$skill_name" "$args"
+            log_audit "$ts" "$skill_name" "sonnet" "0"
+            ;;
+        opus)
+            run_opus "$skill_name" "$args"
+            log_audit "$ts" "$skill_name" "opus" "0"
+            ;;
+        mcp-direct)
+            run_mcp_direct "$skill_name" "$args"
+            log_audit "$ts" "$skill_name" "mcp-direct" "0"
+            ;;
         *)
             if [[ "$allow_fallback" == "false" ]]; then
                 warn "unknown executor '$executor' for skill '$skill_name'."
+                log_audit "$ts" "$skill_name" "unknown" "4"
                 exit 4
             fi
             warn "unknown executor '$executor' for skill '$skill_name'. Falling back to Sonnet."
             run_sonnet "$skill_name" "$args"
+            log_audit "$ts" "$skill_name" "sonnet" "0"
             ;;
     esac
 }
