@@ -15,6 +15,11 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] — обновлено 2026-05-25
 
+### Fixed
+
+- B2 manifest-coverage gap: `scripts/day-open-scaffold.sh`, `scripts/iwe-backup-check.sh`, `scripts/route-task.sh` отсутствовали в `update-manifest.json` — не доставлялись при `update.sh --apply` (delivery blocker для incremental updates). Добавлены в manifest.
+- Документирован intentional local override паттерн для `day-open-preflight.sh` (отсутствует в FMT template by design, автор добавляет поверх).
+
 ### Added
 
 - `a4260e7` feat(day-open): scaffold PENDING markers + protocol-close WP archiving step

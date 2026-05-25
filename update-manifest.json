@@ -630,6 +630,9 @@
       "path": "scripts/day-close.sh"
     },
     {
+      "path": "scripts/day-open-scaffold.sh"
+    },
+    {
       "path": "scripts/generate-skills-catalog.sh"
     },
     {
@@ -643,6 +646,9 @@
     },
     {
       "path": "scripts/iwe-audit.sh"
+    },
+    {
+      "path": "scripts/iwe-backup-check.sh"
     },
     {
       "path": "scripts/iwe-drift-helpers/check-arch-version.sh"
@@ -685,6 +691,9 @@
     },
     {
       "path": "scripts/pack-ci-install.sh"
+    },
+    {
+      "path": "scripts/route-task.sh"
     },
     {
       "path": "scripts/script-promote.sh"
