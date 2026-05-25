@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-route-task.sh — 8 кейсов для route-task.sh (WP-350 Ф14)
+# test-route-task.sh — 10 кейсов для route-task.sh (WP-350 Ф14)
 # routing: executor=script deterministic=true
 set -euo pipefail
 
@@ -50,6 +50,49 @@ run_test "T7: --list (exit 0)" 0 --list
 
 # 8. --validate
 run_test "T8: --validate (exit 0)" 0 --validate
+
+# 9. Broken YAML catalog → exit 1 (error)
+echo "=== T9: broken YAML catalog → exit 1 ==="
+TMP_CATALOG=$(mktemp)
+echo "broken: [" > "$TMP_CATALOG"
+set +e
+IWE_EXECUTOR_CATALOG="$TMP_CATALOG" bash "$SCRIPT" --skill consent >/dev/null 2>&1
+actual=$?
+set -e
+rm -f "$TMP_CATALOG"
+if [[ "$actual" -eq 1 ]]; then
+    echo "PASS (exit $actual)"
+    ((PASS++)) || true
+else
+    echo "FAIL: expected exit 1, got $actual"
+    ((FAIL++)) || true
+fi
+echo ""
+
+# 10. Missing python3 → exit 1 (error)
+echo "=== T10: missing python3 → exit 1 ==="
+TMP_DIR=$(mktemp -d)
+cat > "$TMP_DIR/python3" << 'FAKEPY'
+#!/usr/bin/env bash
+if [[ "$1" == "-c" && "$2" == "import yaml" ]]; then
+    exit 1
+fi
+exit 0
+FAKEPY
+chmod +x "$TMP_DIR/python3"
+set +e
+PATH="$TMP_DIR:$PATH" bash "$SCRIPT" --skill consent >/dev/null 2>&1
+actual=$?
+set -e
+rm -rf "$TMP_DIR"
+if [[ "$actual" -eq 1 ]]; then
+    echo "PASS (exit $actual)"
+    ((PASS++)) || true
+else
+    echo "FAIL: expected exit 1, got $actual"
+    ((FAIL++)) || true
+fi
+echo ""
 
 echo "========================"
 echo "PASS: $PASS  FAIL: $FAIL"
