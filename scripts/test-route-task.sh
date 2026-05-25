@@ -100,6 +100,9 @@ run_test "T11: --json --skill unknown (strict → NO_MATCH, exit 3)" 3 --json --
 # 12. JSON mode — OK fallback
 run_test "T12: --json --tag unknown (flex → OK, exit 0)" 0 --json --tag unknown_skill
 
+# 13. AGENT_FAULT routing
+run_test "T13: --skill agent-fault (script, no LLM)" 0 --skill agent-fault --args "record --severity major --fault=test"
+
 echo "========================"
 echo "PASS: $PASS  FAIL: $FAIL"
 exit $FAIL

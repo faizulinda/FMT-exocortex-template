@@ -5,7 +5,7 @@ argument-hint: "<severity> <description>"
 routing:
   executor: script
   deterministic: true
-  script_path: scripts/iwe_checklist_memory.py
+  script_path: DS-my-strategy/scripts/iwe_checklist_memory.py
 ---
 
 # Agent Fault Registrar

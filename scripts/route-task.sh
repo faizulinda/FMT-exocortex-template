@@ -128,6 +128,28 @@ PYEOF
 # Executors
 # ---------------------------------------------------------------------------
 
+_resolve_interpreter() {
+    local script_path="$1"
+    local ext="${script_path##*.}"
+    if [[ "$ext" == "py" ]]; then
+        echo "python3"
+    elif [[ "$ext" == "rb" ]]; then
+        echo "ruby"
+    elif [[ -r "$script_path" ]]; then
+        local shebang
+        shebang=$(head -n1 "$script_path" 2>/dev/null)
+        if [[ "$shebang" =~ ^#!/usr/bin/env[[:space:]]+python ]]; then
+            echo "python3"
+        elif [[ "$shebang" =~ ^#!/usr/bin/env[[:space:]]+ruby ]]; then
+            echo "ruby"
+        else
+            echo "bash"
+        fi
+    else
+        echo "bash"
+    fi
+}
+
 run_script() {
     local skill_name="$1"
     local script_path="$2"
@@ -160,14 +182,18 @@ run_script() {
         chmod +x "$script_path"
     fi
 
+    local interpreter
+    interpreter=$(_resolve_interpreter "$script_path")
+
     if [[ "$JSON_MODE" != "true" ]]; then
-        echo "[router] skill=$skill_name executor=script path=$script_path"
+        echo "[router] skill=$skill_name executor=script interpreter=$interpreter path=$script_path"
     fi
     local script_exit=0
     if [[ -n "$args" ]]; then
-        bash "$script_path" "$args" || script_exit=$?
+        # shellcheck disable=SC2086
+        "$interpreter" "$script_path" $args || script_exit=$?
     else
-        bash "$script_path" || script_exit=$?
+        "$interpreter" "$script_path" || script_exit=$?
     fi
     if [[ $script_exit -ne 0 ]]; then
         emit_error "$skill_name" "EXEC_FAILED" "script exit $script_exit"
