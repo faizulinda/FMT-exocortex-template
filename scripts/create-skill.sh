@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# routing: utility  deterministic=true
+# see DP.SC.159, DP.ROLE.059
 # create-skill.sh — создать scaffold нового скилла IWE (SKILL.md v2)
 # see DP.SC.153, DP.ROLE.057
 #

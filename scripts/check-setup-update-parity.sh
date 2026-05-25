@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# routing: utility  deterministic=true
+# see DP.SC.159, DP.ROLE.059
 #
 # check-setup-update-parity.sh — статический анализ парных скриптов
 # Проверяет что setup.sh ↔ update.sh ↔ migrate-*.sh содержат ключевые паттерны.

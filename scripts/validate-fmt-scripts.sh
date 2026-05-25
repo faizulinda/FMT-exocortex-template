@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# routing: utility  deterministic=true
+# see DP.SC.159, DP.ROLE.059
 # validate-fmt-scripts.sh — проверка FMT на личные хардкоды и нарушения конвенций
 # Запускается автоматически из template-sync.sh и вручную при подозрении.
 #

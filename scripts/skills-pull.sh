@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# routing: utility  deterministic=true
+# see DP.SC.159, DP.ROLE.059
 # skills-pull.sh — синхронизация L1 скиллов из FMT в личный IWE
 # see DP.SC.153, DP.ROLE.056
 #

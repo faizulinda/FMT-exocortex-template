@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# routing: migration  one-time=true
+# see DP.SC.159, DP.ROLE.059
 # migrate-skills-to-v2.sh — миграция существующих скиллов под стандарт SKILL.md v2
 # see DP.SC.153
 #

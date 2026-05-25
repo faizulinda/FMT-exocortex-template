@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# routing: utility  deterministic=true
+# see DP.SC.159, DP.ROLE.059
 # script-promote.sh — промоция личного скрипта в платформенный шаблон IWE
 #
 # Поток: личная папка/<script> → подстановки → FMT/scripts/<script>

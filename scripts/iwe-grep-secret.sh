@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# routing: utility  deterministic=true
+# see DP.SC.159, DP.ROLE.059
 #
 # iwe-grep-secret.sh — Secret Drift Detector (WP-315)
 #

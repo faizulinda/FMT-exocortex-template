@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# routing: utility  deterministic=true
+# see DP.SC.159, DP.ROLE.059
 # settings-promote.sh — регистрация хука в .claude/settings.json шаблона
 #
 # Добавляет запись hook в нужный event с правильным $CLAUDE_PROJECT_DIR/ префиксом.
