@@ -190,18 +190,22 @@ dispatch_skill() {
         haiku)
             run_haiku "$skill_name" "$args"
             log_audit "$ts" "$skill_name" "haiku" "-" "0"
+            return 0
             ;;
         sonnet)
             run_sonnet "$skill_name" "$args"
             log_audit "$ts" "$skill_name" "sonnet" "-" "0"
+            return 0
             ;;
         opus)
             run_opus "$skill_name" "$args"
             log_audit "$ts" "$skill_name" "opus" "-" "0"
+            return 0
             ;;
         mcp-direct)
             run_mcp_direct "$skill_name" "$args"
             log_audit "$ts" "$skill_name" "mcp-direct" "-" "0"
+            return 0
             ;;
         *)
             if [[ "$allow_fallback" == "false" ]]; then
