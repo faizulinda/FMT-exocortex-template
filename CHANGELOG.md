@@ -13,15 +13,21 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
+
+
 ## [Unreleased] — обновлено 2026-05-25
-
-### Fixed
-
-- B2 manifest-coverage gap: `scripts/day-open-scaffold.sh`, `scripts/iwe-backup-check.sh`, `scripts/route-task.sh` отсутствовали в `update-manifest.json` — не доставлялись при `update.sh --apply` (delivery blocker для incremental updates). Добавлены в manifest.
-- Документирован intentional local override паттерн для `day-open-preflight.sh` (отсутствует в FMT template by design, автор добавляет поверх).
 
 ### Added
 
+- `cd2a295` feat(WP-350): routing-заголовки в 21 FMT хелпер-скрипт
+- `c571c55` feat(WP-350 Ф13): Маршрутизатор + Артефактор в Session Open
+- `7599ae5` feat(WP-350 Ф12): route-task.sh — Маршрутизатор задач IWE
+- `ceca611` feat(WP-350 Ф10): routing-заголовки в 20 скриптов + script_path в 3 SKILL.md
+- `6142f6a` feat(WP-350 Ф9): routing: секция в 21 скилл шаблона
+- `0ba2168` feat(WP-352/Ф3): add HD numbers to 4 FPF distinctions in distinctions.md
+- `b05a35b` feat(WP-352 Ф2): 4 FPF различения в distinctions.md
+- `016833a` feat(week-close): add step 7a iwe-backup-check.sh before backup
+- `836997c` feat: promote iwe-backup-check.sh to platform scripts
 - `a4260e7` feat(day-open): scaffold PENDING markers + protocol-close WP archiving step
 - `02bfe7d` feat: guard в script-promote.sh — блокирует перезапись фиксов FMT
 - `75d15f0` feat(WP-347 Ф3+Ф4): docs/RELEASE-PROCESS.md + правило валидатора в SCRIPT-PROMOTION.md
@@ -36,10 +42,10 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - `d4e3db2` feat(WP-348): Ф3 — SKILL.md v2 шаблон + генератор каталога + мигратор
 - `2136141` feat: settings-promote.sh + pre-commit HOOK-PATH-CONVENTION gate
 - `333c83d` feat(strategist): complete runner migration — run_skill() for day-open/day-close/week-close/strategy-session
-- `f550e9b` feat(pack-templates): DP.ROLE.NNN Constraint Analyst + DP.SC.NNN + DP.WP.NNN
 
 ### Changed
 
+- `89ea560` refactor(WP-350 Ф5): R29 Артефактор → Декомпозитор, /artifactor → /decompose
 - `a5b9aa8` docs(changelog): add 2c92438 warn() fix to Unreleased
 - `f721eb0` chore(audit-installation): add SKILL.md frontmatter (version, layer, status, triggers)
 - `af829fe` chore: sync headless-runner.sh
@@ -49,6 +55,7 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `457950b` fix(manifest): B2 coverage gap — add 3 orphan scripts to update-manifest.json
 - `0bc537f` fix(script-promote): робастный hint + аргументы в любом порядке
 - `dde3e7f` fix: регрессии после sync + 2 новых дополнения
 - `9dfbfaa` fix: минимальный frontmatter в guard-else вместо touch
@@ -65,8 +72,6 @@ Versioning: [Semantic Versioning](https://semver.org/).
 - `b00ef4c` fix(settings-promote): inline jq check вместо полного validate-fmt-scripts.sh
 - `72f7572` fix: hook paths — $CLAUDE_PROJECT_DIR/ convention for all hook commands
 - `e337183` fix(manifest): remove strategist prompts from deprecated_files — runner still uses them
-- `5bffbc9` fix: replace hardcoded DS-strategy with GOVERNANCE_DIR/GOVERNANCE_REPO env vars
-- `2c5e91d` fix(pack-templates): DP.WP.NNN — добавить §6 пример Stage Dependency Map
 
 
 ## [0.34.1] — 2026-05-21
