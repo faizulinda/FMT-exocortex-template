@@ -60,7 +60,7 @@ try:
     with open(registry, "r", encoding="utf-8") as f:
         for line in f:
             # Ищем строки вида | 297 | или | ~~297~~ |
-            m = re.match(r"^\|\s*~*(\d+)~*\s*\|", line)
+            m = re.match(r"^\|\s*(?:\*\*)?~*(\d+)~*(?:\*\*)?\s*\|", line)
             if m:
                 n = int(m.group(1))
                 if n > max_num:
@@ -189,6 +189,26 @@ ${RELATED_ROWS}
 WPEOF
 
 echo "   ✅ $WP_FILE"
+
+# --- Шаг 1б: archive/wp-contexts/ заготовка ---
+ARCHIVE_DIR="$STRATEGY/archive/wp-contexts"
+mkdir -p "$ARCHIVE_DIR"
+CONTEXT_FILE="$ARCHIVE_DIR/WP-${WP_NUM}-${SLUG}.md"
+cat > "$CONTEXT_FILE" <<CTXEOF
+---
+wp: ${WP_NUM}
+title: "${TITLE}"
+created: ${TODAY}
+status: pending
+---
+
+# WP-${WP_NUM}: ${TITLE}
+
+## Закрытие
+
+*(заполняется скриптом close-wp.sh при закрытии РП)*
+CTXEOF
+echo "   ✅ $CONTEXT_FILE"
 
 # --- Шаг 2: WP-REGISTRY.md ---
 echo "2/4 WP-REGISTRY.md..."

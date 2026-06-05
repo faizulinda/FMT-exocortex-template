@@ -10,4 +10,6 @@ DS-exocortex-setup/
 .claude/settings.local.json
 .claude/checkpoint.md
 .claude/logs/
-.DS_Store
+
+# Author-local downstream config for sync-communication-style.py (WP-388)
+scripts/sync-communication-style.yaml

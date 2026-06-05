@@ -17,17 +17,27 @@
 #   3. .claude/settings.json: хук-команды на .claude/hooks/X.sh должны иметь префикс
 #      $CLAUDE_PROJECT_DIR/ (иначе ломаются при сдвиге cwd: subagent/worktree/MCP)
 #   4. *.sh под set -e: ((VAR++)) без || true → silent exit при VAR==0 (B8 gap)
+#   5. .claude/skills/*/SKILL.md: $HOME/IWE/<author-repo>/ и ~/IWE/<author-repo>/
+#      без env-fallback ${IWE_GOVERNANCE_REPO:-...} (WP-337 З-Ф6, 1 июня 2026)
 
 set -uo pipefail
 
 MODE="all"
 SCRIPTS_DIR=""
+FILES=()
+MODE_FILES=0
 for arg in "$@"; do
     case "$arg" in
         --scripts)       MODE="scripts" ;;
         --settings-json) MODE="settings-json" ;;
         --all)           MODE="all" ;;
-        *)               SCRIPTS_DIR="$arg" ;;
+        --files)         MODE_FILES=1 ;;   # FMT7 (#150): последующие позиционные = конкретные файлы
+        *)
+            if [ "$MODE_FILES" = "1" ] && [ -f "$arg" ]; then
+                FILES+=("$arg")
+            else
+                SCRIPTS_DIR="$arg"
+            fi ;;
     esac
 done
 SCRIPTS_DIR="${SCRIPTS_DIR:-$(dirname "$0")}"
@@ -39,7 +49,13 @@ errors=0
 checked=0
 
 if [[ "$MODE" != "settings-json" ]]; then
-    for f in "$SCRIPTS_DIR"/*.sh "$SCRIPTS_DIR"/*.py; do
+    # FMT7: переданы конкретные файлы (--files) → проверять только их, иначе весь каталог
+    if [ ${#FILES[@]} -gt 0 ]; then
+        TARGETS=("${FILES[@]}")
+    else
+        TARGETS=("$SCRIPTS_DIR"/*.sh "$SCRIPTS_DIR"/*.py)
+    fi
+    for f in "${TARGETS[@]}"; do
         [[ -f "$f" ]] || continue
         fname=$(basename "$f")
         # Не проверять сам себя
@@ -67,7 +83,7 @@ if [[ "$MODE" != "settings-json" ]]; then
                 | grep -v '^\s*#\|^[0-9]*:\s*#' \
                 | grep -v '\${[^}]*:-' \
                 | grep -v '\${[^}]*:?' \
-                | grep -v 'GOV_REPO_TMPL=' \
+                | grep -vE '^[0-9]*:[[:space:]]*[A-Z_]+_TMPL=' \
                 | grep -vE "os\.environ\.get\([^)]*,[[:space:]]*[\"']" \
                 | grep -vE '^[0-9]*:\s*[A-Z_][A-Z0-9_]*="[^"]*"[[:space:]]*[\\]$' \
                 || true)
@@ -96,6 +112,52 @@ if [[ "$MODE" != "settings-json" ]]; then
 
     if [[ $checked -eq 0 && "$MODE" != "settings-json" ]]; then
         echo "validate-fmt-scripts: нет файлов для проверки в $SCRIPTS_DIR"
+    fi
+fi
+
+if [[ "$MODE" != "scripts" && "$MODE" != "settings-json" ]]; then
+    # Проверка 5: .claude/skills/*/SKILL.md — буквальные хардкоды путей к файлам
+    # Ловит: $HOME/IWE/<author-repo>/scripts/... и ~/IWE/<author-repo>/scripts/...
+    # Допустимо: $HOME/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/... (env-fallback)
+    # Допустимо: голое DS-strategy в комментариях/документации
+    SKILLS_DIR="$FMT_ROOT/.claude/skills"
+    if [[ -d "$SKILLS_DIR" ]]; then
+        skills_checked=0
+        while IFS= read -r -d '' md_file; do
+            skills_checked=$((skills_checked + 1))
+            fname=${md_file#$FMT_ROOT/}
+
+            # Паттерн 1: $HOME/IWE/<author-repo-name>/(scripts|sessions|docs|current)/
+            # БЕЗ env-fallback ${...:-...}. Исключаем: # comments, echo, printf, export
+            bad_home=$(grep -nE '\$HOME/IWE/[A-Za-z][A-Za-z0-9_-]+/(scripts|sessions|docs|current)/' "$md_file" 2>/dev/null \
+                | grep -v ':\s*#' \
+                | grep -v ':\s*>' \
+                | grep -vE 'echo |printf |export ' \
+                | grep -vE '\$\{[A-Z_]+:-[A-Za-z0-9_-]+\}' \
+                || true)
+            if [[ -n "$bad_home" ]]; then
+                echo "  ❌ $fname: \$HOME/IWE/<author-repo>/ без env-fallback" >&2
+                echo "$bad_home" | head -3 | sed 's/^/     /' >&2
+                errors=$((errors + 1))
+            fi
+
+            # Паттерн 2: ~/IWE/<author-repo>/(scripts|sessions|docs|current)/  (Python expanduser)
+            bad_tilde=$(grep -nE '~/IWE/[A-Za-z][A-Za-z0-9_-]+/(scripts|sessions|docs|current)/' "$md_file" 2>/dev/null \
+                | grep -v ':\s*#' \
+                | grep -v ':\s*>' \
+                | grep -vE 'echo |printf |export ' \
+                | grep -vE '\$\{[A-Z_]+:-[A-Za-z0-9_-]+\}' \
+                || true)
+            if [[ -n "$bad_tilde" ]]; then
+                echo "  ❌ $fname: ~/IWE/<author-repo>/ без env-fallback" >&2
+                echo "$bad_tilde" | head -3 | sed 's/^/     /' >&2
+                errors=$((errors + 1))
+            fi
+        done < <(find "$SKILLS_DIR" -type f -name "*.md" -print0 2>/dev/null)
+
+        if [[ $skills_checked -gt 0 ]]; then
+            checked=$((checked + skills_checked))
+        fi
     fi
 fi
 
