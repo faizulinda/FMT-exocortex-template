@@ -3,15 +3,13 @@
 # Agent reads this file at Day Open and during Day Work.
 
 day_open:
-  strategy_day: monday          # Day for strategizing session (monday..sunday)
+  week_close_day: sunday
+  strategy_day: sunday          # Day for strategizing session (monday..sunday)
   self_dev_slot: 1              # Slot number for self-development (always first by default)
   self_dev_missing_alert: true  # Explicitly say if no self-dev in today's plan
   interactive: false            # false = Day Open одним блоком. true = промежуточные вопросы.
-  calendar_ids:                 # Calendar IDs to check. Empty = all available calendars.
-    - primary
-    - fcge7l50p885aknvucj4dpgpkul8q0gv@import.calendar.google.com  # Рабочий (Teams/EvenBet)
-    - ru.russian#holiday@group.v.calendar.google.com                # Праздники РФ → нерабочие дни
-    - ru.am#holiday@group.v.calendar.google.com                     # Праздники Армении → только инфо
+  calendar_ids: []              # Calendar IDs to check. Empty = all available calendars.
+                                # Examples: ['primary', 'work@company.com', 'team-calendar-id@group']
 
 news:
   enabled: false                # Enable news digest at Day Open (requires WebSearch)

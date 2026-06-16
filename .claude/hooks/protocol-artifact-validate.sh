@@ -38,15 +38,6 @@ GOV_PATH="$WORKSPACE/$GOV_REPO"
 # Старая логика грепала TOOL_INPUT на «DayPlan|day-close» — false positive
 # на любой коммит файла `day-close/SKILL.md` или сообщения с «day-close».
 # Принцип: «hook trigger = artifact (staged file), не TOOL_INPUT текст» (memory/hooks-design.md).
-
-# R4.6 fix (2026-06-05): trigger ТОЛЬКО если коммит идёт в governance-репо.
-# Без этой проверки хук читал staged-файлы GOV_PATH и блокировал коммиты
-# в других репо (DS-EvenBet и др.) когда в GOV_PATH случайно были staged WeekPlan-файлы.
-if ! echo "$TOOL_INPUT" | grep -qF "$GOV_REPO"; then
-  echo '{}'
-  exit 0
-fi
-
 STAGED=$(cd "$GOV_PATH" 2>/dev/null && git diff --cached --name-only 2>/dev/null || echo "")
 if ! echo "$STAGED" | grep -qE '^current/DayPlan.*\.md$|^current/WeekPlan.*\.md$'; then
   echo '{}'

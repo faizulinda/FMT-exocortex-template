@@ -7,12 +7,12 @@
 > **Source-of-truth:** `DP.IWE.002` (Pack). При расхождении с этим файлом — приоритет у Pack.
 > Через Aisystant MCP: `knowledge_search("установка IWE шаблон")`.
 >
-> **Конденсированная версия (15 мин, для лендинга WP-188):** `iwe-quickstart.md` в `DS-ecosystem-development/.../2.1.2. Onboarding/`. Это руководство — полная версия с 7 этапами.
+> **Нужна короткая версия?** → [QUICK-START.md](QUICK-START.md) (15 минут, если Git, Node.js и CLI уже установлены). Здесь - полная установка с нуля.
 
 <details open>
 <summary><b>Где ты сейчас и куда идёшь</b></summary>
 
-Платформа работает на 4 уровнях (тирах, `DP.ARCH.002`). Возможно, ты уже пользуешься ботом — это T1-T3. Это руководство переводит тебя на **T4**, где появляется персональное рабочее пространство с ИИ-агентами.
+Платформа открывает доступ по уровням (тирам, `DP.ARCH.002`): от T0 (без аккаунта) до T4 (Созидание, IWE). Возможно, ты уже пользуешься ботом — это T1-T3. Это руководство переводит тебя на **T4**, где появляется персональное рабочее пространство с ИИ-агентами.
 
 | Тир | Что есть | Как попасть |
 |-----|---------|-------------|
@@ -354,6 +354,31 @@ cd DS-strategy && git init && git add -A && git commit -m "Initial"
 gh repo create $(gh api user -q .login)/DS-strategy --private --source=. --push
 ```
 </details>
+
+</details>
+<details>
+<summary><b>Восстановление на новом устройстве (из exocortex-бэкапа)</b></summary>
+
+Если IWE уже настроен на одном устройстве, на новом **не нужно** инициализировать память с нуля. `day-close.sh --backup` и хук `memory-exocortex-sync.sh` держат зеркало памяти в `DS-strategy/exocortex/`, и оно уезжает на GitHub вместе с governance-репо. `restore-from-exocortex.sh` разворачивает его обратно.
+
+**Шаги на новом устройстве:**
+
+```bash
+# 1. Этап 0 (бинарники, gh auth, claude CLI) — как обычно
+# 2. Рабочая папка + клонировать шаблон и governance-репо (он несёт exocortex/)
+mkdir -p ~/IWE && cd ~/IWE
+gh repo fork TserenTserenov/FMT-exocortex-template --clone
+git clone https://github.com/<твой-логин>/DS-strategy.git
+
+# 3. Восстановить память из бэкапа (вместо инициализации с нуля)
+bash ~/IWE/FMT-exocortex-template/scripts/restore-from-exocortex.sh ~/IWE/DS-strategy
+#    --dry-run  — превью без изменений
+#    --force    — перезаписать уже населённую memory/
+
+# 4. Перезапустить Claude Code → память на месте
+```
+
+Скрипт: копирует `exocortex/*.md|*.yaml` → auto-memory (`~/.claude/projects/<slug>-IWE/memory/`), `exocortex/CLAUDE.md` → `~/IWE/CLAUDE.md`, создаёт симлинк `~/IWE/memory → auto-memory`. Непустую `memory/` без `--force` не трогает (защита от случайной перезаписи рабочей инсталляции).
 
 </details>
 <details>

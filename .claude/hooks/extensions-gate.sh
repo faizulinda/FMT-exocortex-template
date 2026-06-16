@@ -26,7 +26,7 @@ if echo "$FILE_PATH" | grep -qE '\.claude/skills/|memory/protocol-'; then
   fi
 
   # Блокировать для обычных пользователей
-  echo '{"decision": "block", "reason": "⛔ Extensions Gate: L1 (платформа) и L3 (пользователь) — разные слои. Кастомизацию скилла пиши в extensions/skills/<name>/SKILL.md — она применяется в .claude/skills/ на старте сессии (apply-extensions.sh) либо вручную: bash .claude/scripts/apply-extensions.sh. Платформенное изменение → FMT-exocortex-template → update.sh."}'
+  echo '{"decision": "block", "reason": "⛔ Extensions Gate: платформенные (L1) и пользовательские (L3) файлы — разные слои. Правило (CLAUDE.md §9): Авторская кастомизация → extensions/*.md. Платформенное изменение → FMT-exocortex-template → update.sh. Смешение слоёв = хрупкость при обновлении. Создай или обнови нужный файл в extensions/."}'
   exit 0
 fi
 
