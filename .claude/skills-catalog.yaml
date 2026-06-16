@@ -1,0 +1,538 @@
+# skills-catalog.yaml — автогенерировано generate-skills-catalog.sh
+# see DP.SC.153
+# НЕ редактировать вручную — перегенерировать через generate-skills-catalog.sh
+#
+generated: 2026-06-16T09:16:19Z
+skills_dir: .claude/skills
+
+skills:
+  - id: agent-fault
+    name: "agent-fault"
+    description: "Register an agent fault in the WP-316 tracking system (L1). No LLM — deterministic script."
+    version: 0.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by: []
+  - id: apply-captures
+    name: "apply-captures"
+    description: "Process extraction reports with pending-review status — R15 decision (accept/reject/defer), write to Pack, update status, commit. Call during Close when N>0 pending-review reports exist."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /apply-captures
+    depends_on: []
+    invoked_by:
+    - ke
+    - apply-captures
+  - id: archgate
+    name: "archgate"
+    description: "Evaluate an architectural decision against 7 ECOGSSS characteristics (v3 — profile without aggregate score, conjunctive screening). Use when the pilot proposes an architectural decision, new tool, or system change."
+    version: 0.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - CLAUDE.md
+    - verify
+    - bottleneck-pick
+    - decompose
+  - id: artifactor
+    name: "artifactor"
+    description: "Classifies raw pilot request → structured JSON {task_type, class, artifact, budget_estimate, confidence, routing_tag, resolution_path}. Keyword-fast (<200ms) or Haiku fallback (<60s). Does NOT create WP or call executor."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /artifactor
+    depends_on: []
+    invoked_by:
+    - artifactor
+  - id: audit-docs
+    name: "audit-docs"
+    description: "Audit repository documentation: detect drift between code and docs, report coverage by category. Run manually or on triggered drift critical."
+    version: 0.1.0
+    layer: L3
+    status: active
+    triggers:
+      slash:
+        - /audit-docs
+    depends_on: []
+    invoked_by:
+    - audit-docs
+  - id: audit-installation
+    name: "audit-installation"
+    description: "Audit a user's IWE installation. Runs scripts/iwe-audit.sh + MCP healthcheck + ritual smoke-test via sentinel mechanism (dry-run-contract.md), passes report to a VR.R.002 Auditor subagent (context isolation) → verdict pass/warn/fail across 6 components (Inventory, L1 drift, DS-strategy, L3 customizations, MCP, ritual). Use after restore from backup, after update.sh, or for weekly verification."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /audit-installation
+    depends_on: []
+    invoked_by:
+    - audit-installation
+  - id: bottleneck-pick
+    name: "bottleneck-pick"
+    description: "Identify the pilot's development bottleneck across cp-profile slots and recommend the next growth step."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /bottleneck-pick
+    depends_on: []
+    invoked_by:
+    - bottleneck-pick
+    - platform-bottleneck
+  - id: check-secret
+    name: "check-secret"
+    description: "Check a text fragment for potential secrets (API keys, tokens, passwords) BEFORE sending to chat / committing / publishing. Third protection layer on top of pre-commit hook (B7.7a) and PostToolUse redact (B7.7b). Manual gate — user explicitly calls on potentially sensitive text."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /check-secret
+    depends_on: []
+    invoked_by:
+    - check-secret
+  - id: consent
+    name: "consent"
+    description: "Manage consent in learning.tracking_consent — opt-in / opt-out / status / revoke. Required for the stage_evaluator worker (WP-253 Block 2). GDPR-compliant."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /consent
+    depends_on: []
+    invoked_by:
+    - consent
+  - id: day-close
+    name: "day-close"
+    description: "Day Close protocol. Alias for /run-protocol close day — symmetric with /day-open."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /day-close
+    depends_on: []
+    invoked_by:
+    - run-protocol
+    - extend
+    - day-close
+  - id: day-open
+    name: "day-open"
+    description: "Day Open protocol. Collects yesterday's commits, issues, notes, calendar, bot QA, Scout, world events — builds DayPlan and compact dashboard."
+    version: 1.1.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - CLAUDE.md
+    - run-protocol
+    - extend
+    - day-close
+    - week-close-pilot
+    - day-open
+  - id: decompose
+    name: "decompose"
+    description: "Decompose work into stages with physical artifacts and acceptance checklists. Gap detector. Use when opening a WP ≥3h (open-loop/problem-framing) or on explicit request to break into stages. Executes R29 Decomposer role."
+    version: 1.0.0
+    layer: L3
+    status: active
+    triggers:
+      slash:
+        - /decompose
+    depends_on: []
+    invoked_by:
+    - bottleneck-pick
+    - decompose
+  - id: diagnose-iwe
+    name: "diagnose-iwe"
+    description: "Diagnose mastery level (Diagnostician R28, FORM.089 §6.1) directly in VS Code / claude.ai. Up to 7 questions, ~7 min. Saves cp-profile to digital twin (browser) or Neon (VS Code). Launch when pilot says 'run diagnostics', 'what is my level', '/diagnose-iwe' — or PROACTIVELY when you see an empty cp_profile or a new user without data."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /diagnose-iwe
+    depends_on: []
+    invoked_by:
+    - diagnose-iwe
+    - pack-creator
+  - id: discovery-session
+    name: "discovery-session"
+    description: "Разговор-распаковка неудовлетворённостей (discovery-стратегирование). Сократический разбор сырой рефлексии и заметок на триаду Проблема/Неудовлетворённость/Эмоция → состояние пилота → приоритеты месяца (WHAT/WHY). Роль R1 Стратег, метод DP.METHOD.053. Триггеры — «разбери неудовлетворённости», «помоги со стратегией месяца», «что для меня сейчас важно», «/discovery-session»."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /discovery-session
+    depends_on: []
+    invoked_by:
+    - discovery-session
+    - strategy-session
+  - id: extend
+    name: "extend"
+    description: "IWE extensibility catalog: what can be customized, which extension points exist, which parameters are available, how to install a third-party extension."
+    version: 1.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - extend
+  - id: fpf
+    name: "fpf"
+    description: "Loads applicable principles for a task from the Pack → SPF → FPF hierarchy. Use when you need to find relevant first principles before making a decision."
+    version: 0.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - CLAUDE.md
+    - pack-new
+    - fpf
+  - id: iwe-bug-report
+    name: "iwe-bug-report"
+    description: "Report a bug or platform issue in IWE. Creates a GitHub issue in FMT-exocortex-template."
+    version: 0.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - iwe-bug-report
+  - id: iwe-rules-review
+    name: "iwe-rules-review"
+    description: "Weekly review of IWE work culture (element 14 — System Evolution). Runs during Week Close."
+    version: 1.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by: []
+  - id: iwe-update
+    name: "iwe-update"
+    description: "Update IWE with change explanations. Agent calls update.sh, parses CHANGELOG, explains what changed, helps adapt updates to user customizations."
+    version: 1.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - iwe-update
+    - day-open
+  - id: ke
+    name: "ke"
+    description: "Knowledge Extraction — captures and routes knowledge at work boundaries. Use when you discover a pattern, make a decision, find a distinction, or complete a sub-task."
+    version: 0.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - ke
+    - pack-new
+    - apply-captures
+    - pack-creator
+  - id: kimi-peer-writer
+    name: "kimi-peer-writer"
+    description: "Peer-сессия DP.SC.154 где Kimi = писатель, Claude = напарник. Запускается простой фразой. Включает ОРЗ Opening и Closing, turn-loop, эскалации, Decision Gate (зафиксировать vs реализовать → ревью → проверить → задеплоить), отложенную финализацию и верификацию."
+    version: 1.2.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /peer-writer
+    depends_on: []
+    invoked_by: []
+  - id: lesson-close
+    name: "lesson-close"
+    description: "Close a lesson opened with /lesson. Finalizes workbook/YYYY-MM-DD.md (frontmatter status, time metadata, duration), commits + pushes to the personal-guide repo. Triggers the closed delivery loop: push → GitHub webhook → sync_one_user_to_dt → Digital Twin updates in Neon. Use when pilot says 'close', 'done', 'finish', 'close lesson' — or after explicit task completion in /lesson."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /lesson-close
+    depends_on: []
+    invoked_by:
+    - lesson-close
+    - personal-guide-render
+  - id: month-close
+    name: "month-close"
+    description: "Month Close protocol. Stage 7 of the OWC v9 cascade (PD.METHOD.008). Runs on the first Monday of the month, before Strategy Session."
+    version: 1.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - CLAUDE.md
+    - month-close
+  - id: org-dev
+    name: "org-dev"
+    description: "Organizational Development Manager (R31): guides the subject from an organizational change request (self/team/organization) to a concrete first step from SE/SM/PE. Step 0 — system type classifier (MIM.M.030, 7 questions). Step 3 — routing-table (MIM.M.031)."
+    version: 1.0.0
+    layer: L3
+    status: active
+    triggers:
+      slash:
+        - /org-dev
+    depends_on: []
+    invoked_by:
+    - org-dev
+  - id: pack-creator
+    name: "pack-creator"
+    description: "Guide a PACK-X author through the SPF fill cycle 01-11. Calls R28 Diagnostician to select mode (assembly/hybrid/full SPF) and leads through phases. Protects the read-only upstream invariant via PreToolUse hook."
+    version: 1.0.0
+    layer: L3
+    status: active
+    triggers:
+      slash:
+        - /pack-creator
+    depends_on: []
+    invoked_by:
+    - pack-creator
+  - id: pack-new
+    name: "pack-new"
+    description: "Create a new Pack — guided flow through SPF: choose domain, name Pack, scaffold structure, fill roadmap."
+    version: 0.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - CLAUDE.md
+    - skill-creator
+    - pack-creator
+  - id: peer-conversation
+    name: "peer-conversation"
+    description: "Multi-turn dialog between writer (Claude) and partner (Kimi) on the pilot's task (DP.SC.154). Manages turn-loop, detects CONSENSUS/ESCALATE, after consensus — Decision Gate (record vs implement → review → verify → deploy), synthesizes report.md via Agent tool."
+    version: 1.2.0
+    layer: L3
+    status: active
+    triggers:
+      slash:
+        - /peer-conversation
+    depends_on: []
+    invoked_by:
+    - peer-conversation
+    - kimi-peer-writer
+  - id: personal-guide-render
+    name: "personal-guide-render"
+    description: "Builds (or rebuilds) the personal guide in an EXISTING personal-guide repo (flat name, one per pilot) — reads RCS from Memory.Derived, selects stage×domain templates, writes 6 files via personal_write. Use when pilot asks 'rebuild guide', 'update my plan', 'update methods' — or when repo is created but has no content yet."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /personal-guide-render
+    depends_on: []
+    invoked_by:
+    - lesson-close
+    - personal-guide-start
+    - personal-guide-render
+  - id: personal-guide-start
+    name: "personal-guide-start"
+    description: "Bootstrap wrapper — creates an empty personal-guide repo under the pilot's account (flat name, no login in the name; if not yet created), then calls /personal-guide-render to populate 6 files. Use when pilot first asks 'create my personal guide', 'I want to start a personal development program', 'build me a starter plan'."
+    version: 0.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - bottleneck-pick
+    - personal-guide-start
+    - personal-guide-render
+  - id: platform-bottleneck
+    name: "platform-bottleneck"
+    description: "Alias for /bottleneck-pick --layer platform. Deprecated — use /bottleneck-pick directly."
+    version: 1.0.0
+    layer: L3
+    status: active
+    triggers:
+      slash:
+        - /platform-bottleneck
+    depends_on: []
+    invoked_by:
+    - platform-bottleneck
+  - id: restore-exocortex
+    name: "restore-exocortex"
+    description: "Restore IWE memory from an exocortex backup on a new device or after data loss — NL wrapper around restore-from-exocortex.sh."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /restore-exocortex
+    depends_on: []
+    invoked_by:
+    - restore-exocortex
+  - id: run-protocol
+    name: "run-protocol"
+    description: "Step-by-step execution of the OWC protocol with mandatory checkpoint at each step. Prevents skipping steps (including verification)."
+    version: 0.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - CLAUDE.md
+    - day-close
+    - audit-installation
+  - id: setup-wakatime
+    name: "setup-wakatime"
+    description: "Set up WakaTime time-tracking for Claude Code and VS Code."
+    version: 0.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - setup-wakatime
+  - id: skill-creator
+    name: "skill-creator"
+    description: "|"
+    version: 0.2.0
+    layer: L1
+    status: experimental
+    triggers:
+      slash:
+        - slash:
+    depends_on: []
+    invoked_by:
+    - skill-creator
+  - id: strategy-session
+    name: "strategy-session"
+    description: "Strategy session — dispatcher. Day 0 (no Strategy.md/WeekPlan) → initial flow (goals, dissatisfactions, first WeekPlan). Day 1+ → weekly flow (requires draft from session-prep). Triggers: 'run strategy session', 'first strategy session', 'strategy session', 'let's strategize'."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /strategy-session
+    depends_on: []
+    invoked_by:
+    - discovery-session
+    - strategy-session
+  - id: think
+    name: "think"
+    description: "ADI-cycle structured reasoning (Abduction-Deduction-Induction-Audit-Decide). Use for complex decisions when multiple hypotheses need to be considered."
+    version: 0.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by: []
+  - id: transcribe
+    name: "transcribe"
+    description: "Transcribe audio/video files via MLX Whisper (Apple Silicon). Usage: /transcribe path/to/file.mp3"
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /transcribe
+    depends_on: []
+    invoked_by:
+    - transcribe
+  - id: verify
+    name: "verify"
+    description: "Verify an artifact against a Pack standard. Loads VR.R.001 (Verifier) role with context isolation — checks the result, not the creation process."
+    version: 0.0.0
+    layer: unknown
+    status: active
+    triggers:
+      slash: []
+    depends_on: []
+    invoked_by:
+    - run-protocol
+    - peer-conversation
+    - day-close
+    - verify
+    - kimi-peer-writer
+    - skill-creator
+    - pack-creator
+    - audit-docs
+  - id: w-reflection
+    name: "w-reflection"
+    description: "Record a W-reflection (worldview slot of RCS) in learning.w_reflections. Used by Diagnostician R28 (MIM.R.009) or called by the user after a reflective session. Affects the D→P gate (FORM.089 §5.2)."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /w-reflection
+    depends_on: []
+    invoked_by:
+    - w-reflection
+  - id: week-close-pilot
+    name: "week-close-pilot"
+    description: "Run the pilot-facing Week Close protocol with progress review and carry-over."
+    version: 1.0.0
+    layer: L3
+    status: active
+    triggers:
+      slash:
+        - /week-close-pilot
+    depends_on: []
+    invoked_by:
+    - week-close-pilot
+  - id: week-close
+    name: "week-close"
+    description: "Week Close protocol. 7-day retrospective + carry-over to new week + platform steps (backup, dirty repos)."
+    version: 1.2.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /week-close
+    depends_on: []
+    invoked_by:
+    - run-protocol
+    - extend
+    - week-close-pilot
+    - month-close
+    - week-close
+  - id: wp-new
+    name: "wp-new"
+    description: "Create a new Work Product (WP) with atomic registration in 5 places. Use when a new task appears that is not in the week plan."
+    version: 1.0.0
+    layer: L1
+    status: active
+    triggers:
+      slash:
+        - /wp-new
+    depends_on: []
+    invoked_by:
+    - wp-new
+    - pack-creator
+    - decompose
