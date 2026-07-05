@@ -31,33 +31,61 @@ Versioning: [Semantic Versioning](https://semver.org/).
 
 
 
-## [Unreleased] — обновлено 2026-06-16
 
-### Added
 
-- `d6160b2` feat: promote skill artifactor from staging (L1)
-- `7f19385` feat(skill): promote kimi-peer-writer fix — NameError peer_agent + deprecated utcnow
-- `5e21531` feat(WP-7/SP1): refactor skill-promote.sh — safety, validation, tests
-- `53cd985` feat(day-open): add ТВС labeling step to skill template (§6b2)
-- `36febfd` feat(strategy): модель ТВС в шаблон (стратегирование + ОРЗ)
-- `673474d` feat(WP-388): проекция базы стиля — 4 новых элемента регистра (зеркало L0)
 
-### Changed
 
-- `f820cb9` docs(local-llm): sync ADR-001 venv-Python note from author SoT (WP-404 Ф4)
-- `a512810` chore(day-close): commit dirty changes from 2026-06-15
-- `6c8a4cd` docs(WP-362 Ф8.1): developer/README — тиры T1-T4 → T0-T4 (консистентность с каноном)
-- `6fdb1b0` docs(WP-362): Ф8 — FMT/docs self-contained онбординг
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## [Unreleased] — обновлено 2026-06-30
 
 ### Fixed
 
-- `9bd0593` fix(update.sh): Windows SSL revocation flag detection via curl --help
-- `b1b45cd` fix(WP-7): strategist runner env fallback + diagnose-iwe YAML sync (#136 #122)
-- `a823c51` fix(WP-7): setup/validate-template.sh delivery, CLAUDE.md conflict hard-fail, manifest coverage
-- `8073146` fix(WP-7): FMT delivery — .claude/styles propagation, manifest sync, smoke Test 6e
-- `cb8a1a6` fix(COL-06): communication-style-base.md — L1 → S1 (авторский слой)
-- `06b9d79` fix(WP-376): A52/A49/A50/A51 — template hygiene и agentigore sample
+- `b4d08a2` fix(v0.35.5): orphan-detection TypeError + DS-strategy validator + root detection (#214 #215)
+- `212fa2f` fix(setup): include rules-lazy in dry-run and section message
 
+
+## [0.35.5] — 2026-06-30
+
+### Fixed
+
+- fix(#215): orphan detection TypeError — `set(dict_list)` → `_path()` helper + set comprehension (`update.sh` Python heredoc)
+- fix(#215): bare `DS-strategy` literals in `update.sh` lines 306/533-544 → `${IWE_GOVERNANCE_REPO:-DS-strategy}` (no longer blocked by `validate-fmt-scripts.sh`)
+- fix(#215): add `roles/strategist/WORKPLAN.md`, `.claude/hooks/wakatime-heartbeat.sh`, `.claude/skills/peer-conversation/modes.md` to `update-manifest.json deprecated_files` — suppresses false orphan warnings for removed platform files
+- fix(#214): `iwe-env-bootstrap.sh` `.claude/` branch — inline `basename` check prevents `WORKSPACE_DIR` landing inside `FMT-exocortex-template` when bootstrap is sourced from `FMT/.claude/lib/`
 
 ## [0.35.4] — 2026-06-15
 
@@ -1281,7 +1309,7 @@ Commits: 150be24 (I1+I2 sync из DS-ai-systems), 731471f (I3 sweep 11 точе�
 
 ### Added
 - **CI smoke-test** (`.github/workflows/validate-template.yml`): job «Smoke-test protocol hooks on clean user env» — создаёт tmp-окружение с `DS-strategy` + минимальным DayPlan и прогоняет `protocol-artifact-validate.sh`. Падает, если хук блокирует commit на чистом пользователе. Перехватывает L1→L3 утечки, которые пропускает blacklist.
-- **Расширенный blacklist** (два уровня) в `validate-template.yml` + зеркально в локальном `setup/validate-template.sh`: глобальный (запрещено везде: `tserentserenov`, `PACK-MIM`, `aist_bot_newarchitecture`, `DS-Knowledge-Index-Tseren`, `DS-my-strategy`, `engines/tailor`) и protocol-only (запрещено в `.claude/skills|hooks|rules`, `memory`, `CLAUDE.md`, но разрешено в README/docs: `@aist_me_bot`, `digital-twin`, `content-pipeline`, `knowledge-mcp`, `gateway-mcp`, `DS-agent-workspace/scheduler`). Покрытие расширено на `roles/`.
+- **Расширенный blacklist** (два уровня) в `validate-template.yml` + зеркально в локальном `setup/validate-template.sh`: глобальный (запрещено везде: `tserentserenov`, `aist_bot_newarchitecture`, `DS-Knowledge-Index-Tseren`, `DS-my-strategy`, `engines/tailor`) и protocol-only (запрещено в `.claude/skills|hooks|rules`, `memory`, `CLAUDE.md`, но разрешено в README/docs: `@aist_me_bot`, `digital-twin`, `content-pipeline`, `knowledge-mcp`, `gateway-mcp`, `DS-agent-workspace/scheduler`). Покрытие расширено на `roles/`.
 
 ### Fixed
 - CI `validate-template.yml` — зеркалирование exclude-логики локального валидатора для путей (`/Users/...`, `/opt/homebrew`) + shellcheck severity: warning→error (0 pred-existing errors, CI зеленеет).

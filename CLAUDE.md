@@ -1,9 +1,7 @@
 # Инструкции для всех репозиториев
 
-> **Агент-специфичные инструкции:** Kimi → `AGENTS.md`, Hermes → Aisystant MCP `get_instructions`.
-> **Синхронизация:** `scripts/template-sync.sh` проверяет согласованность ядра правил.
-
-> Slim-ядро: триггеры + правила. Детали → memory/protocol-*.md, .claude/rules/, .claude/skills/.
+> Slim-ядро: триггеры + правила. Детали → `memory/protocol-*.md`, `.claude/rules/`, `.claude/skills/`.
+> Синхронизация: `scripts/template-sync.sh` · Агент-специфичные инструкции: Hermes → Aisystant MCP `get_instructions`.
 
 ## 1. Архитектура репозиториев
 
@@ -13,87 +11,51 @@
 | **Pack** | Паспорт предметной области | Да (пользователь) |
 | **DS** (instrument/governance/surface) | Код, планы, курсы | Нет (производное от Pack) |
 
-**Fallback Chain:** DS → Pack → Base (SPF → FPF → ZP)
-**Pack = source-of-truth для доменного знания. DS меняется вслед за Pack.**
-Детали типов, именование, измерения: → `memory/repo-type-rules.md`
-
-**Pack Creation Gate:** хочешь создать Pack → `/pack-new`. Структура Pack = `SPF/pack-template/`. Процесс = `SPF/process/01-11`. Имя = существительное-домен (не тема, не инструмент). Если `FPF/` или `SPF/` отсутствуют в рабочей директории — `/pack-new` клонирует их автоматически.
+**Fallback Chain:** DS → Pack → Base (SPF → FPF → ZP). **Pack = source-of-truth доменного знания.**
+**Лестница принципов (уровень специфичности):** ZPF → FPF → SPF → TPF → LPF
+где: ZPF/FPF/SPF-методология → Base · SPF-инстанс → Pack · TPF → DS + операционный слой агента · LPF → партикулярные практики роли (тест: без носителя данной роли — бессмысленны); детали → `memory/repo-type-rules.md`
+**Pack Creation Gate:** хочешь Pack → `/pack-new`. Имя = существительное-домен.
+Детали типов: → `memory/repo-type-rules.md`
 
 ## 2. ОРЗ-фрактал (Открытие → Работа → Закрытие)
 
-> Три стадии, три масштаба. Пропуск Открытия = незапланированная работа. Пропуск Закрытия = незафиксированный результат.
-
 | Масштаб | Открытие | Работа | Закрытие |
 |---------|----------|--------|----------|
-| **Сессия** | `protocol-open.md § Сессия` (любое задание) | `protocol-work.md` | `/run-protocol close` |
-| **День** | `/day-open` («открывай») | Между Day Open и Day Close | `/run-protocol day-close` |
+| **Сессия** | `protocol-open.md § Сессия` | `protocol-work.md` | `/run-protocol close` |
+| **День** | `/day-open` | Между Open и Close | `/run-protocol day-close` |
 | **Неделя** | — | — | `/run-protocol week-close` |
-| **Месяц** | — | Между Month Close предыдущего и текущего | `/month-close` (первый Пн месяца, до Strategy Session) |
+| **Месяц** | — | — | `/month-close` |
 
 ### Блокирующие правила
 
-> **Source-of-truth (WP-272 Ф1, 26 апр):** правила формализованы в `PACK-agent-rules/rules/AR.NNN.md` с frontmatter (id, type, priority, triggers, tests, hook). Реестр генерируется в `.claude/rules-registry.yaml` через `python3 .claude/scripts/generate-rules-registry.py`. Диспатчер: `.claude/hooks/rule-engine.sh`. Ниже — горячая выжимка top правил для агента; полный текст — в Pack.
->
-> **Иерархия при конфликте:** правила нумерованы по приоритету (= AR-priority в Pack).
-> Структурное (1-5) ВСЕГДА перевешивает поведенческое (6-10). Структурное = «без них работы нет». Поведенческое = «как себя вести внутри уже согласованной работы».
-> Пример (C-001 в conflicts.md): WP Gate priority=1, Автономность priority=6. При конфликте AR.001 выигрывает.
+> Source-of-truth: `PACK-agent-rules/rules/AR.NNN.md`. Структурные (1-5) > поведенческих (6-10).
 
-1. **WP Gate:** ЛЮБОЕ задание → протокол Открытия → ДО начала работы.
-   **Ритуал согласования (горячий, не lazy):** при создании нового РП (нет в плане недели) Claude обязан:
-   - Шаг 1. Объявить: Роль пользователя · Роль Claude · Работа · РП (артефакт) · Режим ТВС (текущее/важное/срочное — конвейерная модель; «срочное» только при угрозе остановки конвейера, не по дедлайну/«горит») · Класс верификации (trivial/closed-loop/open-loop/problem-framing) · Метод · Оценка ~Xh · Модель.
-   - Шаг 2. **Дождаться согласования.** Без явного «да»/«делаем»/«открывай» от пользователя — НЕ регистрировать РП в 4 местах (REGISTRY/WeekPlan/context/Linear). Это исключение из Правила 7 (Автономность).
-   - Шаг 3-4. См. `memory/protocol-open.md` (детали).
-2. **Push:** «заливай» / «запуши» / «закрывай» → commit + push без доп. вопросов. Push ДО отчёта Закрытия. **При любом Close-протоколе (Quick/Day/Week):** `git status --short` по ВСЕМ репо сессии — незафиксированные изменения → commit + push ДО перехода к следующему шагу протокола.
+1. **WP Gate:** ЛЮБОЕ задание → протокол Открытия → ДО начала работы. Новый РП: объявить (Роль пользователя · Роль Claude · Работа · РП · ТВС · Класс верификации · Метод · ~Xh · Модель) → ждать «да». Шаги 3-4 → `memory/protocol-open.md`.
+2. **Push:** «заливай/запуши/закрывай» → commit+push без вопросов. При Close: `git status` по ВСЕМ репо → незафиксированное → commit+push ДО следующего шага.
 3. **Close:** Триггер Закрытия → протокол Закрытия → выполнить.
-4. **Pull-on-Touch:** `git pull --rebase` при первом **обращении** к репо за сессию (любое — `ls`/`Read`/`find`/`grep`/Edit/commit), один раз на репо, lazy. Применяется ко ВСЕМ git-репо в `{{HOME_DIR}}/IWE/*`, не только governance. Перед pull — `git status`: dirty → stash или пропустить с пометкой «вывод potentially stale»; rebase conflict → два варианта: (А) stash незафиксированных изменений + пометить вывод как potentially stale → продолжить; (Б) прервать сессию + отчёт пилоту. Default: вариант А. Без автоматического разрешения конфликта. Сетевой fail → работать с локальной копией, помечать выводы как potentially stale. Причина расширения с «изменения» на «обращения»: 5 мая 2026 ложный диагноз «Day Open пропущен» из-за чтения устаревшей локальной копии DS-strategy (origin был на 3 коммита впереди). Без Obsidian: см. §9.
-5. **Чеклист-верификация (Haiku R23):** Quick Close и Day Close — sub-agent Haiku R23 (context isolation). Проверяет формальное соответствие чеклисту (все ли пункты закрыты, есть ли коммит, обновлён ли MEMORY.md), но не оценивает качество результата. Исключения: сессия ≤15 мин или без изменений файлов.
-6. **Hooks/Scripts Bypass Gate (БЛОКИРУЮЩЕЕ, S-33):** Без явного разрешения пользователя НЕ менять скрипты шаблона (`.claude/hooks/`, `.claude/scripts/`, `.iwe-runtime/`, `FMT-exocortex-template/`) и НЕ обходить хуки никаким способом (`--no-verify`, изменение флагов запуска, `git config core.fileMode false` без причины, переопределение `AI_CLI_EXTRA_FLAGS`). Если хук или скрипт IWE блокирует действие: (1) НЕ обходить — выполнять как задумано; (2) записать ошибку в `<governance-repo>/inbox/bugs/bug-YYYY-MM-DD-<тема>.md`; (3) сообщить пользователю что заблокировано и где bug-файл; (4) ждать инструкций. Исключение — пользователь явно говорит «обойди» / «игнорируй хук» / «измени скрипт». **Источник:** Дмитрий (пилот), 2026-04-28; ортогонально Extensions Gate (тот про «куда писать кастомизацию», этот — «что делать когда хук блокирует»).
-7. **Автономность (поведенческое):** НЕ спрашивать подтверждения — ни «добавить?», ни «продолжить?», ни «записать?», ни «хотите...?». Задание → выполни → отчитайся. Не заканчивать сообщение вопросом. Очевидные следствия (синхронизация, обновление связанных файлов) — делать сразу. Факт, проверяемый самостоятельно (grep, БД, конфиг), — проверять, а не спрашивать. **Исключения** (когда вопрос/согласование легитимны):
-    - **Необратимое разрушительное действие** (force push в прод, удаление данных без бэкапа).
-    - **WP Gate Ритуал** (создание/закрытие/изменение РП): согласование артефакта/формулировки/репо/бюджета через Ритуал §2 Open. Это другая ось — НЕ нарушение Правила 1. Без согласия пользователя новый РП НЕ создавать (даже если задача очевидно «перерастает в РП» — формальное предложение, не автономная регистрация в 4 местах).
-    - **Choice-question** (выбор между альтернативами): «делаем X или Y?», «сегодня или завтра?» — заказчик решает, это нормальный режим collaboration. Запрещены только yes/no запросы согласия на готовое решение.
+4. **Pull-on-Touch:** `git pull --rebase` при ПЕРВОМ обращении к репо за сессию (lazy, один раз). Конфликт → вариант А: stash + «potentially stale». Сетевой fail → potentially stale.
+5. **Чеклист-верификация:** Quick/Day Close → sub-agent Haiku R23. Исключение: сессия ≤15 мин или без изменений файлов.
+6. **Hooks/Scripts Bypass Gate (БЛОКИРУЮЩЕЕ):** НЕ менять `.claude/hooks/`, `.claude/scripts/`, `.iwe-runtime/`, `FMT-exocortex-template/` без явного разрешения. Хук заблокировал → (1) НЕ обходить (2) записать в `inbox/bugs/bug-YYYY-MM-DD-<тема>.md` (3) сообщить пилоту (4) ждать инструкций.
+7. **Автономность:** НЕ спрашивать «добавить/продолжить/записать?». Задание → выполни → отчитайся. Исключения: необратимое действие · WP Gate Ритуал · Choice-question («X или Y?»).
+8. **Напоминания:** «напомни через X» → `send_telegram_message` (schedule_at) + ScheduleWakeup.
+9. **Финиш > отлог:** новая задача → делаю сейчас. Исключения: бюджет ×2-×3 · требует ArchGate · контекст переключился. Если >15 мин + новый артефакт → WP Gate.
 
-    Отклонение инструмента ≠ запрет навсегда — попробовать другой путь. Детали и журнал нарушений → `memory/feedback_behaviour.md` Правило 1. Подтверждено P5-детектором: апрель 2026 — 853 срабатывания в 104 сессиях. 26 апр WP-271: P5-block на одну фразу интерпретирован как «не задавать никаких вопросов» → пропущен WP Gate, создан РП без согласия → нужны исключения выше.
-8. **Напоминания (S-44):** «напомни через X», «поставь таймер» → использовать IWE-инструмент Telegram-доставки (стандартно: `send_telegram_message`) с `schedule_at` + одновременно ScheduleWakeup как резервный канал. При срабатывании ScheduleWakeup → сначала отправить через Telegram-инструмент (немедленно, без `schedule_at`), потом написать в чате. Если Telegram-инструмент недоступен → только ScheduleWakeup + сообщить причину. Зачем: уведомление в чате IDE видно только при открытом окне; Telegram доставляет на любое устройство.
-9. **Финиш > отлог (S-46):** обнаружена дополнительная задача в текущей сессии (косяк, недоделка, следующий шаг от субагента) → **дефолт = делаю сейчас**, НЕ «отдельный РП / технический долг» первым вариантом. Choice question «сейчас или потом?» = анти-паттерн (скрытое предложение отложить → inventory, не throughput). Исключения для отложения: бюджет ×2-×3, требуется доменное решение/данные, требуется ArchGate, контекст полностью переключился (другая часть системы). **WP Gate приоритет:** если дополнительная задача >15 мин и создаёт новый артефакт — п.1 WP Gate действует (см. AR.001 порог «creates_artifact + >15 мин»); п.9 не отменяет п.1 для таких задач. Детали → [feedback_finish_now_no_defer.md](memory/feedback_finish_now_no_defer.md). Source: 17 мая 2026, WP-311 cleanup эпизод.
+### Протокол Работы → `memory/protocol-work.md`
 
-### Протокол Работы (полный → `memory/protocol-work.md`)
+**Capture-to-Pack:** на рубеже — «Capture: [что] → [куда]». Routing Gate (DP.KR.001 §5) при создании артефакта.
 
-**Capture-to-Pack** — на каждом рубеже: есть ли знание для записи? Анонсировать: *«Capture: [что] → [куда]»*. Маршрутизация: правило (1-3 строки) → CLAUDE.md, доменное → Pack, реализационное → DS docs/, урок → memory/. Capture-to-Pack — shortcut внутри маршрутизации знаний, не замена Routing Gate. При создании нового артефакта Routing Gate (DP.KR.001 §5) проверяется первым.
-**Self-correction:** расхождение → немедленно предложить фикс (файл, строка, что изменить). Применяется только внутри scope текущего хода: файлы/директории из agenda хода (проверяется `git diff HEAD`). За пределами scope — Drift Reporting (Agent Core SYNC-CORE): отчитаться пилоту, не фиксить.
-
-### Pre-action Gates
-
-| Момент | Проверка |
-|--------|---------|
-| Начало работы | Какие сервисы (MAP.002) затронуты? |
-| Пользовательский сценарий | **SC Gate:** какое обещание (08-service-clauses/) затронуто? |
-| Создание/размещение артефакта (файл, скрипт, документ, правило) | **Routing Gate:** сначала DP.KR.001 §5 (PACK-digital-platform) — карта маршрутизации знаний. Запрещено размещать по аналогии с соседним файлом без проверки карты |
-| Первое содержательное действие в репо (Read файла, Edit, ответ о структуре, commit) | **Repo-Touch Gate:** прочитать `<repo>/CLAUDE.md`. Если содержит блок «обязательно загружай» — загрузить указанные файлы ДО ответа. |
-| Архитектурное решение | **АрхГейт** → `/archgate` |
-| РП затрагивает PII (email, telegram_id, ЦД, tokens, user_events) | **Security Gate (B7.3):** ответить на §Б чеклист ArchGate ДО реализации. Логирование PII = блокер. |
-| РП ≥3h | **Priority Gate:** к какому R{N} ведёт? |
-| Новый инструмент/агент/система | **IntegrationGate (БЛОКИРУЮЩЕЕ):** проектирование ТОЛЬКО в последовательности — (1) обещание → (2) сценарии → (3) роль → (4) реализация. См. ниже явный чеклист. Прыжок сразу в реализацию = P10 (DP.FM.010). |
-| Замена legacy-компонента (миграция из LMS/внешней системы) | **LegacyPortGate (БЛОКИРУЮЩЕЕ):** сначала 15-мин субагент: «как это работает сейчас?» (cron/API/merchant/токены). Решение портирование vs новый дизайн — ТОЛЬКО после ответа. Прыжок в «новый дизайн» без проверки = DP.FM.014 (Legacy Port Jump). См. `memory/feedback_behaviour.md` Правило 10. |
-
-### IntegrationGate — явный чеклист (БЛОКИРУЮЩЕЕ)
-
-> При проектировании нового инструмента, агента, детектора, системы или метода соблюдать строгую последовательность фаз. Пропуск фазы = паттерн P10 (DP.FM.010). Фиксировать как инцидент в журнал `DS-ecosystem-development/C.IT-Platform/C2.IT-Platform/C2.3.Operations/Incidents/`.
-
-1. **Обещание (Service Clause).** Какое обещание инструмент даёт потребителю? Создать/обновить `DP.SC.NNN` в `PACK-digital-platform/.../08-service-clauses/`. Обещание содержит: триггер, входы, выходы, время отклика, инвариант (что гарантируется), режим отказа.
-2. **Сценарии использования.** Кто запускает? Когда? Зачем? В каком контексте? Что делает с результатом? Минимум 3 сценария с разными потребителями. Приложить к Service Clause.
-3. **Роль.** Какую роль в системе играет инструмент? Создать/обновить `DP.ROLE.NNN` в `PACK-digital-platform/.../02-domain-entities/`. Роль содержит: обязанности, полномочия, связи с другими ролями, входы/выходы как артефакты. При определении роли — идентифицировать **Kind** (род сущности) и **Owner Role** (кто владеет ролью в надсистеме). Шаблон: DP.D.033.
-4. **Реализация.** Только после (1)-(3). Код, тесты, регистрация в hooks/config, smoke-test. Заголовок реализации должен содержать ссылку на Service Clause и Role (`# see DP.SC.NNN, DP.ROLE.NNN`).
-
-**Исключения (IntegrationGate НЕ нужен):**
-- Правка существующего инструмента без изменения его обещания.
-- Bugfix без изменения поведения снаружи.
-- Рефакторинг (переименование, реорганизация) без функциональных изменений.
-- Экспериментальный скрипт на один запуск (но если запускается повторно — уже инструмент).
+| Pre-action Gate | Когда |
+|-----------------|-------|
+| Repo-Touch Gate | Первое действие в репо → читать `<repo>/CLAUDE.md` |
+| Routing Gate | Создание/размещение артефакта → DP.KR.001 §5 |
+| ArchGate | Архитектурное решение → `/archgate` |
+| Security Gate | РП затрагивает PII → §Б чеклист ArchGate ДО реализации |
+| IntegrationGate | Новый инструмент/агент/система → скилл `integration-gate` |
+| LegacyPortGate | Замена legacy → 15-мин субагент «как сейчас?» ДО решения |
 
 ## 3. Описания методов (PROCESSES.md)
 
-≤15 мин — не нужен. Внутри системы — `<repo>/PROCESSES.md`. Новая система — сценарий + процессы + данные.
+≤15 мин — не нужен. Внутри системы — `<repo>/PROCESSES.md`.
 
 ## 4. Memory (Слой 3)
 
@@ -103,16 +65,12 @@
 | Pack-репо | `memory/repo-type-rules.md` |
 | Терминология | `memory/hard-distinctions.md` |
 | FPF/SOTA/Роли | `memory/fpf-reference.md`, `memory/sota-reference.md`, `memory/roles.md` |
-| Документ/чеклист | `memory/checklists.md` |
 
-Политика: ≤11 файлов. **Горячие** (читаются каждую сессию: CLAUDE.md, MEMORY.md, distinctions.md, formatting.md): лимит строк — см. `distinctions.md` (WP-7 NR1.2: 150 строк/файл, source-of-truth). Протоколы (lazy, по триггеру): ≤150. **Lazy-reference** (по ссылке из MEMORY.md, не каждую сессию — feedback_*, templates-*, reference_*): без жёсткого лимита, > 300 строк → пересмотреть.
-Temporal metadata: `valid_from: YYYY-MM-DD` (обязательно при создании), `superseded_by: <файл>` (при устаревании). Подробности → `protocol-work.md § 2`.
-Рабочая директория: `{{HOME_DIR}}/IWE/` (не из sub-директорий). `{{HOME_DIR}}/IWE/memory/` = симлинк на auto-memory.
+Политика: ≤15 HOT+WARM, суммарно ≤150 строк hot. CLAUDE.md = ядро (цель ≤150). `memory/` = симлинк auto-memory.
 
 ## 5. АрхГейт — ОБЯЗАТЕЛЬНАЯ оценка
 
-> **БЛОКИРУЮЩЕЕ.** Архитектурное решение → `/archgate` → принципы (DP.ARCH.001 §7) → профиль ЭМОГССБ (✅/⚠️/❌) → conjunctive screening (см. `.claude/skills/archgate/SKILL.md`). Без агрегатного балла — `feedback_decision_gates.md`.
-> Чеклист современности: (1) Context Engineering SOTA.002, (2) DDD Strategic SOTA.001, (3) Coupling Model SOTA.011.
+> **БЛОКИРУЮЩЕЕ.** Архитектурное решение → `/archgate` (скилл `archgate`): профиль ЭМОГССБ, conjunctive screening.
 
 ## 6. Форматирование → `.claude/rules/formatting.md`
 
@@ -120,23 +78,18 @@ Temporal metadata: `valid_from: YYYY-MM-DD` (обязательно при со�
 
 ## 7. Обновление этого файла
 
-> **3 слоя:** L1 (§1-§7) = платформа (`update.sh`). L2 (§8) = staging. L3 (§9) = авторское.
+> **3 слоя:** L1 (§1-§7) = платформа. L2 (§8) = staging. L3 (§9) = авторское.
 
-- Протоколы → `memory/protocol-*.md`
-- Различение (1-3 строки) → `.claude/rules/distinctions.md`
-- Форматирование → `.claude/rules/formatting.md`
-- Стабильные знания → `memory/*.md`
-- Свои правила → §8 (staging) или §9 (авторское)
+- Протоколы → `memory/protocol-*.md` · Правило (1-3 строки) → CLAUDE.md · Доменное → Pack
+- §8+§9 (staging/авторское) → скилл `author-mode`
 
 <!-- PLATFORM-END -->
 
 ---
 
-## Agent Core (SYNC-CORE → AGENTS.md)
+## Agent Core (единое ядро для всех агентов)
 
-> **WP-394 Ф4.2.** Ниже — единое ядро инструкций для всех агентов (Claude, Kimi, Hermes).
-> `AGENTS.md` генерируется из этого блока + `AGENTS-agent-blocks.md` скриптом
-> `scripts/sync-agent-instructions.sh`. **Не редактировать `AGENTS.md` вручную** — правки сюда.
+> WP-394 Ф4.2. Единое ядро для Claude, Kimi, Hermes. Правки — сюда.
 
 <!-- SYNC-CORE-START -->
 
@@ -146,392 +99,43 @@ Temporal metadata: `valid_from: YYYY-MM-DD` (обязательно при со�
 
 ## Git Staging — CRITICAL
 
-**NEVER use `git add -u`, `git add .`, or `git add -A`.**
-
-These commands pick up staged/unstaged changes from OTHER agents (Claude Code works in the same repo simultaneously). Wrong attribution and accidental commits of other agents' work result.
+**NEVER use `git add -u`, `git add .`, or `git add -A`.** Picks up other agents' changes.
 
 **Always stage only specific files you edited:**
 ```bash
-# Correct
-git add path/to/specific-file.md
-
-# FORBIDDEN — captures other agents' work
-git add -u
-git add .
-git add -A
+git add path/to/specific-file.md   # correct
+# git add -u / git add . / git add -A  — FORBIDDEN
 ```
 
+**Before every commit:** `git diff --cached --name-only` → confirm all files belong to current WP/context. Unexpected files → `git restore --staged <file>`.
+
 ## Artifact Naming
-
-**Do not invent artifact names.** Names for sections, documents, RPs, and deliverables must come from the plan/task you received. If the task is silent on a name — report "need clarification on name" instead of making one up.
-
+**Do not invent artifact names.** Names come from the plan/task. If silent on name — report "need clarification on name."
 ## Drift Reporting
-
-If you discover a discrepancy (file doesn't match plan, stale content, inconsistency):
-- **Report to pilot, do not silently fix.**
-- Format: "Found drift: [what is inconsistent] in [file]. Should I fix it?"
-- Only fix if explicitly instructed.
-
+Discrepancy found → **Report to pilot, do not silently fix.** "Found drift: [what] in [file]. Fix?" Fix only if instructed.
 ## Working Directory
-
 `{{HOME_DIR}}/IWE/`
-
-## Status Reporting — Agent Status Registry (РП-395)
-
-**Primary (обязательно):** в начале задачи вызвать MCP-инструмент `agent_status_update(agent=<твой-id>, status=working, task=<кратко>, files=[...])`; по завершении — `status=idle`. `agent` = `claude-code` | `kimi` | `hermes`. Статусы: `idle|working|peer-session|blocked`. Инструмент в Aisystant MCP; не виден в каталоге → появится после рестарта сессии (Ф1 в проде). Пилот видит всех агентов через `agent_status_list`.
-
-**Командный режим (WP-398 Ф5):** если работаешь с файлами из командного репо (несколько участников в одном репо), передавай `repo="org/repo-name"` в `agent_status_update`. Это позволяет другим агентам команды видеть твои активные файлы и избегать конфликтов. Пример: `agent_status_update(agent="claude-code", status=working, task="WP-X фаза", files=["src/marathon.py"], repo="TserenTserenov/DS-strategy")`.
-
-**Fail-safe:** если не вызвал сам — детерминированно пишет `{{HOME_DIR}}/IWE/scripts/agent-status-report.sh <agent> <status> [task] [files-csv]` (Claude — из Stop-хука, Kimi — из `kimi-peer-adapter.sh`). Не отменяет primary.
-
+## Status Reporting
+Start: `agent_status_update(agent=claude-code, status=working, task=..., files=[...])`. Done: `status=idle`. Team repo: add `repo="org/repo-name"`. Fail-safe: Stop-хук → `scripts/agent-status-report.sh`.
 ## WP-REGISTRY Naming — CRITICAL
-
-**Колонка «Название» в WP-REGISTRY содержит ТОЛЬКО имя артефакта ≤80 символов.**
-
-Запрещено в колонке «Название»: даты закрытия, ссылки на peer-сессии, метрики фаз, SHA коммитов, результаты проверок, количество тестов, и любые другие служебные данные.
-
-- ✅ `~~Алгоритм диагностики~~`
-- ❌ `~~Алгоритм диагностики~~ — closed 30 мая (PHASE1=5, MANDATORY=5...)`
-
-**Куда писать:**
-- Итог закрытия РП → раздел `## Закрытие` в `archive/wp-contexts/WP-NNN-*.md`
-- Текущие фазы и прогресс → frontmatter поля `phases`/`progress` в `inbox/WP-NNN.md`
-
-**При начале работы с РП:** прочитать `inbox/WP-NNN.md`. При изменении статуса фаз → обновить frontmatter карточки, НЕ имя реестра.
-
+**Колонка «Название» = ТОЛЬКО имя артефакта ≤80 символов.** Запрещено: даты, SHA, метрики, статусы фаз, ссылки. Итог → `archive/wp-contexts/WP-NNN.md §Закрытие`. Статус фаз → frontmatter `inbox/WP-NNN.md`.
 ## WP Context Scope — Umbrella РП
-
-Для зонтичных (umbrella) РП с `agent_scope: open-only` в frontmatter:
-- Читать **только** фазы со статусом `pending` / `in_progress` / `blocked`
-- Архивные (`done`, `closed`, `defer`) — **не читать** без явного запроса пользователя
-- Исключение: если пользователь даёт задание с указанием конкретной архивной фазы
-
-Применяется к: WP-5, WP-7.
-
+`umbrella: true` + `agent_scope: open-only` → читать только `pending/in_progress/blocked`. Архивные — не читать без запроса. Применяется к: WP-5, WP-7.
 ## Calendar Events — CRITICAL
-
-**All platform reminders and calendar events created by the agent must be scheduled BEFORE 09:00 AM.**
-
-This includes: task reminders, follow-up events, template migration tasks, any agent-generated calendar entries.
-
-**Never** schedule agent-created events at or after 09:00 without explicit pilot approval.
-
-If an event is created after 09:00 by mistake:
-1. Delete the incorrect event immediately
-2. Recreate it before 09:00 on the same day, or on the next available pre-09:00 slot
-3. Report the error to the pilot
-
+**Все события агента — ДО 09:00.** Создано после 09:00 → удалить + пересоздать + сообщить пилоту.
 ## Language
-
 Respond in Russian unless the user writes in English.
-
 ## Response Style — Pilot-Facing
-
-Агент должен применять правила понятного ответа пилоту (полный текст — `memory/feedback_response_clarity_for_pilot.md`, HOT) в ответах чата, синтезе отчётов и пост-отчётах после действий.
-
-**Channel detector:** технический стиль — для стенограмм ходов peer-сессий, commit-сообщений, PR; режим «на пальцах» — для чата с пилотом (если пилот сам не пишет `grep`/`git`/пути/SHA) и для §1-§4 синтеза report.md.
-
-**Eleven rules (A1-A11), short:** A1 путь файла не подлежащее (только в скобках после русского глагола); A2 английский термин только после русского описания в скобках; A3 первое упоминание колонки/функции — расшифровка одним словом; A4 pre-flight: примет ли пилот решение по этой фразе; A5 ЧТО до КАК; A6 одна стрелка-следствие на предложение; A7 «сделал → эффект», `<details>` — только при наличии нужных пилоту деталей или по его явному запросу; A7.1 журнал (SHA, коммиты, дефекты) — только в файл отчёта, не в чат; A8 журнал процесса по умолчанию не писать; A9 channel detector; A10 английские маркеры статуса (exit/PASS/SHA) → русские слова; A11 активный залог на ошибках и находках.
-
+Применять A1-A11 (`memory/feedback_response_clarity_for_pilot.md`). Channel: технический (commit/PR + пилот пишет `grep`/`git`/SHA) vs «на пальцах» (остальной чат).
 ## Code Style — Engineering (DP.SC.172)
-
-При написании/правке кода — инженерный стиль craft-уровня (источник истины L0 — `engineering-code-style-base.md` в PACK-digital-platform). База = перечень запахов с «было/стало»; вкус = отсутствие запахов. Детектор контекста: «есть ли у кода будущий читатель?» Да → правила обязательны.
-
-**P-правила, short:** P0 перед коммитом — форматтер+линтер репо (механику закрывает инструмент); P1 тест без проверки наблюдаемого результата запрещён (`assert True` — запах); P2 третье повторение → функция, не `locals()[str]`; P3 мёртвую ветку/enum удалять, не «для совместимости»; P4 `except: pass` без логирования запрещён; P5 длинную функцию со смешанными обязанностями / булевы флаги-режимы — разбить. Граница: жёсткие запреты (`git add -A`, секреты) — в PACK-agent-rules (AR.*), не здесь. У Claude правила приходят хуком (`inject-code-style.sh`); детектор-страховка `code-style-hook.sh` пишет P1/P2/P4 в единый лог стиля.
+→ `engineering-code-style-base.md` (PACK-digital-platform). P0 форматтер+линтер; P1 тест без assert запрещён; P2 повторение×3 → функция; P3 мёртвую ветку удалять; P4 `except: pass` без лога запрещён.
 
 <!-- SYNC-CORE-END -->
 
 ---
 
-## 8. Staging (обкатка → шаблон)
+## 8–9. Staging + Авторское → скилл `author-mode`
 
-> Правила на обкатке. Работают → переносятся в шаблон (L1).
-> **Перенесено в L1 (20 мар):** SC Gate, межсистемные процессы, чеклист-верификация.
-> **Промотировано в FMT (20 апр):** S-13 (именование РП = существительное-артефакт), S-14 (синхронизация REGISTRY→производные).
+> Staging-канал (обкатка → FMT), Extensions Gate, авторские правила L3.
 
-### Staging-канал (my IWE → FMT-exocortex-template)
-
-- **S-45 Agent Inbox** (WP-324, 17 мая, расширено session 6) — `inbox/agent/` структура + 5 templates + SPEC + DP.SC.135 + DP.ROLE.045 + `iwe-agent-dispatcher.py` (headless `claude -p`, обход CCR v1→v2 bug). Промотировано в FMT `extensions/agent-inbox/` + `pack-templates/digital-platform/`. Status: testing (полная end-to-end automation smoke на расписании — defer-ред: требует Nix systemd unit или cron).
-
-**Правило добавления:** новое поведение в §9 (авторское) → ОДНОВРЕМЕННО строка в STAGING.md (`status: testing`).
-
-**Промоция (при Week Close):**
-1. Просмотреть STAGING.md → есть `validated`?
-2. Убрать авторские константы → заменить на `{{PLACEHOLDER}}`
-3. Перенести в `FMT-exocortex-template` + commit `feat: promote S-NN from staging`
-4. Обновить STAGING.md: статус → `promoted`
-
-**Отклонение:** специфичное для авторского окружения → статус `rejected` (остаётся навсегда в §9, не промотируется). Не удалять из таблицы — это решение.
-
----
-## 9. Авторское (только мой IWE)
-
-### Блокирующие (авторские)
-
-- **Pull-before-Commit:** перенесён в §2 п.5 (платформенное правило для ВСЕХ репо).
-- **Без Obsidian (DS-strategy):** Просмотр через VS Code.
-- **S-33 (Hooks/Scripts Bypass Gate):** перенесён в §2 п.6 (платформенное правило). Авторское дополнение: путь `FMT-exocortex-template/` включён в §2 п.6.
-
-### Различения (авторские)
-
-> Хранятся в `.claude/rules/distinctions.md` в зоне AUTHOR-ONLY — не затираются при `update.sh`.
-
-
-### Именование
-
-- `DS-strategy` (не `DS-strategy`) — личный governance-хаб
-- `{{HOME_DIR}}/IWE/` — рабочая директория
-
-### Read-only репо
-
-
-### Extensions Gate (БЛОКИРУЮЩЕЕ)
-
-**Для пользователей:** кастомизация протоколов/скиллов → ТОЛЬКО в `extensions/*.md`.
-Прямое редактирование `.claude/skills/` или `memory/protocol-*.md` = ошибка.
-**Архитектурное обоснование:** платформенные файлы (L1) и пользовательские расширения (L3) -- разные слои. Смешение слоёв = хрупкость при обновлении. Разделение: платформенное → `FMT-exocortex-template` → `update.sh`. Пользовательское → `extensions/` + `params.yaml`.
-
-**Для автора шаблона (`params.yaml → author_mode: true`):** прямое редактирование L1 файлов РАЗРЕШЕНО.
-- **Flow (единый для всего L1):** авторский IWE (source-of-truth) → доставка в FMT (с отрезанием личного) → GitHub → `update.sh` → пользователи. Авторский IWE = SoT для ВСЕГО: CLAUDE.md, скриптов, хуков, скиллов.
-- **CLAUDE.md:** авторский IWE → `bash $IWE_TEMPLATE/scripts/template-sync.sh` → автоматически в FMT (плейсхолдеры + отрезание §9). Режимы: без флагов = sync, `--dry-run` = diff, `--check` = drift (exit 1).
-- **Промоция артефактов в шаблон** — единая команда по типу:
-  - Скрипт: `bash $IWE_SCRIPTS/script-promote.sh <личный-скрипт>.sh [--dry-run]` → FMT/scripts/
-  - Хук: `bash $IWE_SCRIPTS/hook-promote.sh <личный-хук>.sh [--dry-run]` → FMT/.claude/hooks/
-  - Скилл: `bash $IWE_SCRIPTS/skill-promote.sh <папка-скилла>/ [--dry-run]` → FMT/.claude/skills/
-  - CLAUDE.md: `bash $IWE_SCRIPTS/template-sync.sh` (автозамена §9 + плейсхолдеры)
-- **Все promote-скрипты:** применяют одинаковые подстановки (личные пути и repo-имя → env vars) → прогоняют `validate-fmt-scripts.sh` → копируют. Флаг `--dry-run` показывает результат без копирования.
-- **Валидатор** запускается автоматически после каждого `template-sync.sh`. Вручную: `bash $IWE_SCRIPTS/validate-fmt-scripts.sh $IWE_SCRIPTS/`.
-
-
-### README.md (FMT-exocortex-template)
-
-> Изменение структуры — по согласованию с владельцем.
-
-### Именование РП
-
-**Название РП = существительное-артефакт**, а не глагол-действие.
-- ✅ «Дизайн системы стратегирования», «Архитектура MCP», «Концепция подписок»
-- ❌ «Разработать систему», «Настроить MCP», «Сделать концепцию»
-
-**Название в WP-REGISTRY.md = ≤80 символов, только русский.** Допустимо вкрапление кодовых идентификаторов и Pack-ID, если они являются собственным именем артефакта (`projection-worker`, `DP.SC.125`, `cut-over`, `IWE`). Реестр — индекс, не карточка РП.
-
-Запрещено в названии:
-- статус, даты, commit hash, фазы, метрики («closed 27 апр», «Ф1 done», «PASS», «1.5h факт vs 3h»)
-- список под-задач через `+`/`;` или parenthetical-нарратив
-- английские пояснения (`spawn`, `closes drift`, `runtime activation`)
-- ссылки на другие РП («child WP-268», «parent zonтик», «source: feedback_*»)
-
-Контекст РП (фазы, handoff, ArchGate, бюджеты, решения) живёт в `DS-strategy/inbox/WP-NNN-*.md` для активных и `DS-strategy/archive/wp-contexts/` для закрытых. В реестре — только имя артефакта.
-
-Эталоны: WP-254 «Миграция учебных объектов #6 aist-bot → #11 learning», WP-258 «Plugin API L2 для IWE (регистр MCP-расширений + контракт плагина)», WP-264 «Day Open enforcement — diagnostic logging + deterministic scaffold».
-
-**Синхронизация REGISTRY→производные:** при переименовании РП → обновить одновременно REGISTRY.md + MEMORY.md + WeekPlan + DayPlan (если активен) + WP-context file.
-
-### Память (Memory Lifecycle) — S-35
-
-> Spec: `memory/memory-lifecycle-spec.md` (WP-217 Ф10.1, ArchGate 2026-04-30).
-
-**Обязательный frontmatter** для всех новых файлов `memory/*.md`:
-
-```yaml
----
-name: "..."
-description: "одна строка для MEMORY.md"
-type: user | feedback | project | reference | lesson | protocol
-horizon: hot | warm | cold | archive
-domains: [тег1, тег2]
-status: active | dormant | superseded | archived
-valid_from: YYYY-MM-DD
-owner: user | platform
-schema_version: 1
----
-```
-
-**Правила горизонта:**
-- `hot` — загружается каждую сессию. Суммарный лимит: ≤150 строк по всем HOT-файлам (без frontmatter).
-- `warm` — по триггеру. Default для `project`, `reference`, `lesson`, `protocol`.
-- HOT-лимит превышен → предложить понизить один из HOT-файлов в WARM перед добавлением нового.
-
-**Архивация:** предлагает агент при Week/Month Close — не выполняет автономно. HOT→WARM: 14 дней без обращения. WARM→COLD: 30 дней. COLD→archive: 90 дней.
-
-### Security Audit Cadence (WP-212, S-36)
-
-> **Три уровня периодичности:**
-> - **Per-ArchGate (каждое архитектурное решение):** §Б чеклист в ArchGate (B7.1 ✅) + STRIDE для нового сервиса → обновить B7.2 scope-таблицу.
-> - **Week Close (2 мин):** проверить `security-posture.md §3` — `open_critical_count > 0`? Если да → добавить WP-212 в следующий WeekPlan.
-> - **Daily (tsekh-1, 04:45 МСК):** systemd-timer `iwe-overnight-auditor` → VR.R.002 daily-headless по B7.4 A-D (~10-15 мин, $1.5). Critical flags → Day Open «Требует внимания».
-> - **Month Close (VR.R.002 Аудитор monthly-deep, ~1h):** sub-agent VR.R.002 (catalog R24, context isolation, Sonnet) → разделы A-F чеклиста B7.4 → обновить `security-posture.md` → коммит `docs(WP-212): security audit YYYY-MM`.
-
-**Файлы:**
-
-### WeekPlan / WeekReport split (ОПТ-5, WP-297)
-
-**WeekPlan** = намерения недели (planning, inbox triage, НЭП, приоритеты, контент-план). **Только интенты.** Нет прошлого.
-**WeekReport** = факты недели (итоги дней, что сделано, коммиты). **Только история.** Нет планов.
-
-**Правило:** при создании WeekPlan — предыдущие «Итоги дня» и «Итоги прошлой недели» → новый `WeekReport W{N} YYYY-MM-DD.md`. WeekPlan держит только `week_report: WeekReport W{N}...` в frontmatter как ссылку.
-**Мотив:** WeekPlan смешивал факты и намерения → 545 строк → непригоден как planning-документ. Split → WeekPlan ≤200 строк.
-
-### Режим «на пальцах» (S-37)
-
-**Явные триггеры:** «объясни», «на пальцах», «что сделали», «расскажи понятно», «простыми словами» — любая просьба объяснить итоги или суть работы.
-
-**Детектор канала (peer-session 2026-06-01-27, добавлено):**
-- **Технический режим** в чате с пилотом — если в сообщении пилота сами встречаются: `grep`, `git`, имена файлов с путями, флаги команд, SHA, английские термины из кода.
-- **Режим «на пальцах»** по умолчанию для всего остального: ответы на «что произошло», «почему не работает», «объясни», или задание без технических деталей в формулировке.
-- **report.md** при синтезе peer-сессии: §1-§4 (Постановка, Позиции, Альтернативы, Решение) — режим «на пальцах»; прямые цитаты из ходов внутри §2 — плотный технический стиль (доказательство, не синтез).
-- **Стенограммы ходов** (NN-writer / NN-peer) — плотный технический стиль, правила режима НЕ применяются.
-- **Commit messages, PR descriptions** — плотный технический стиль.
-
-**Правила ответа в режиме «на пальцах» (полная нумерация A1-A11 — в `feedback_response_clarity_for_pilot.md`):**
-- Только русский язык. Английские термины допустимы в скобках после русского описания, исключение — термины, которые сам пилот употребляет (бот, чек-ин, deploy, smoke, merge, push, commit, MCP, Pack). **(A2)**
-- Путь к файлу — никогда не подлежащее. Только в скобках после русского глагола («бот пишет ноль в счётчик (`handlers/marathon.py:65`)»). **(A1)**
-- Никаких голых commit-хешей, номеров строк, флагов команд в основном тексте. Под спойлер «технические детали» в конце. **(A7)**
-- При первом упоминании имени колонки/функции/переменной — расшифровка одним словом. **(A3)**
-- Никаких английских маркеров успеха/неудачи как факта: «exit 0», «PASS», «SHA: abc» → «получилось», «прошло проверку», «залил правкой». **(A10)**
-- Никакого пассивного залога при ошибке или находке: «было обнаружено» → «я нашёл», «я ошибся». **(A11)**
-- Объяснять через аналогии из физического мира или инженерии: что делает система, зачем, что было сломано, что починили. **(A5)**
-- Допустимо: цифры, проценты, сравнения «было / стало», схемы словами.
-- Формат: свободный текст или маркированный список.
-
-**Пример нарушения:** «Исправлен `activity_domain` фильтр в `load_rcs_metrics` — заменён на `SELF_DEV_EVENT_TYPES`.»
-**Правильно:** «Раньше система считала рабочие дни вместе с учебными — теперь считает только те дни, человек реально занимался саморазвитием.»
-
-**Полные правила, 12 паттернов и примеры «было / стало»:** [feedback_response_clarity_for_pilot.md](memory/feedback_response_clarity_for_pilot.md).
-
-### Стиль общения с участниками сообщества (S-38)
-
-**Аудитория:** участники сообщества (не пилот). Читают как люди, не как разработчики.
-
-Стиль общения - по `communication-style-base.md`.
-Базовые правила inline ниже (синхронизируются скриптом `scripts/sync-communication-style.py`).
-Дополнительные правила этого канала - ниже.
-
-<!-- COMMUNICATION-STYLE-BASE-START -->
-
-# Базовый разговорный стиль IWE
-
-**Для кого:** все агенты, общающиеся с людьми (пилот, участник, новичок).  
-**Один корень:** человек читает текст как человек, не как разработчик.
-
-## Базовые правила (все каналы)
-
-1. **Без служебных меток.** Не показывать: коды форм, номера рабочих продуктов, коды требований, имена таблиц базы, имена воркеров, технические идентификаторы. Всё это - машинный шум для человека.
-2. **Английский и коды — только после русского описания, в скобках.** Исключения: имена собственные (NixOS, PostgreSQL, Aisystant) и термины, которые сам человек употребляет. Жаргон запрещён: не «задеплоим», а «развернём»; не «зафейлилось», а «упало». Код рабочего продукта, gate или метода — только после русского названия: не «WP-330 cutover», а «переход на новую версию марафона (РП330)». Не «G3 PASS», а «финальная проверка перед запуском (G3) прошла успешно».
-3. **Главная мысль - в первых двух предложениях.** Всё второстепенное (детали реализации, альтернативы, контекст) - ниже, под спойлером или отдельной секцией.
-4. **Активный залог, машинные маркеры запрещены.** Не «было обнаружено», а «я нашёл». Не «exit 0 / PASS / SHA», а «получилось / прошло проверку / залил правкой».
-5. **Без длинных тире, единственное исключение - конструкция «— это».** Длинное тире (—) допустимо ровно в одном случае: смысловое определение «X — это Y», где тире стоит прямо перед словом «это» (значение «X есть Y»). Во всех остальных местах длинного тире быть не должно - заменять дефисом (-) с пробелами или переформулировать предложение. Это касается и пунктирного перечисления, и вставных оборотов, и «тире вместо двоеточия».
-6. **Краткость.** До 7 пунктов в списке, один экран в Telegram, 2-3 предложения в абзаце.
-
-<details><summary><b>Запрещённые слова и замены (онбординг)</b></summary>
-
-При общении с новичками, которые не употребляют технические термины:
-
-| Вместо этого | Пишем так |
-|--------------|-----------|
-| repo / repository | хранилище |
-| commit | сохранить |
-| push | отправить в хранилище |
-| GitHub | платформа для хранилищ (при первом упоминании) |
-| DS-strategy | твоё пространство |
-| Pack | база знаний (если пользователь не знает термин) |
-| MCP | инструменты платформы (при первом упоминании) |
-| Gateway | шлюз (при первом упоминании) |
-| OAuth | вход через аккаунт |
-| API | интерфейс программы |
-| CLAUDE.md | инструкции агента (только внутри, не для пользователя) |
-| экзокортекс | внешняя память (при первом упоминании) |
-
-Если пользователь сам знает и использует термин (говорит «repo», «commit», «Pack») - используй его терминологию.
-
-</details>
-
-<details><summary><b>Таблица переводов частых терминов</b></summary>
-
-| Вместо этого | Пишем так |
-|--------------|-----------|
-| deploy | развернуть, выкатить |
-| rollback | откат |
-| smoke-test | прогон работоспособности, проверка |
-| edge case | крайний случай |
-| disambiguation marker | маркер различения |
-| lint | проверка стиля кода |
-| import | подключение модуля |
-| runner | исполнитель |
-| health-check | проверка работоспособности |
-| cut-over | переключение |
-| pre-prod | предпроизводственная среда |
-| soak | выдержка |
-
-</details>
-
-<details><summary><b>Особенности каналов (extensions)</b></summary>
-
-**Telegram (бот):**
-- Команды (`/start`, `/help`) - только plain text, не в `<code>`. Telegram не сделает их кликабельными в коде.
-- Заголовки markdown (`#`, `##`) - не работают. Вместо них - `*жирный текст*`.
-- Таблицы - не рендерятся. Вместо них - списки с `*жирным*` для заголовков.
-- Перечисления - списком (каждый пункт на отдельной строке), никогда не через запятую в одном абзаце.
-- Абзацы - 2-3 предложения.
-- Стандартный ответ - до 80 слов.
-
-**Браузер (claude.ai, ChatGPT):**
-- До 7 пунктов, помещается в один экран.
-- Если пользователь знает термины (Pack, SPF, MCP) - используй их. Если нет - бытовые замены из таблицы выше.
-- Не упоминай технические детали подключения (URL, OAuth flow), если пользователь не спрашивает.
-
-**Документы (посты, инструкции, гайды):**
-- Если больше двух экранов - обязательны спойлеры. Каждая логическая секция в `<details><summary><b>Название</b></summary>`.
-- Без горизонтальных разделителей между спойлерами.
-- Первый абзац - суть. Примеры и эталоны - в конце, под спойлером.
-
-**Чат с пилотом (Claude Code, Kimi):**
-- Режим «на пальцах» по умолчанию. Технический режим - только если пилот сам пишет `grep`, `git`, пути, SHA.
-- Путь к файлу - никогда не подлежащее. Только в скобках после русского глагола.
-- При первом упоминании имени колонки/функции/переменной - расшифровка одним словом.
-- Self-check перед отправкой: 4 быстрых прохода — путь как подлежащее, английский без русского описания, машинные маркеры (PASS, exit, SHA), пассивный залог.
-
-</details>
-
-<details><summary><b>Примеры «было → стало»</b></summary>
-
-**Ссылки на коды:**
-- ❌ «WP-330 cutover завершён, G3 PASS.»
-- ✅ «Переход на новую версию марафона (РП330) завершён, финальная проверка перед запуском (G3) прошла успешно.»
-
-**Метки:**
-- ❌ «По поведенческим индикаторам (FORM.089) система пересчитывает ступень.»
-- ✅ «Платформа смотрит, как ты практикуешь, что завершаешь и какие методы освоил - и пересчитывает ступень.»
-
-**Термины:**
-- ❌ «Упадёт на Neon pooler без statement_cache_size=0.»
-- ✅ «Упадёт при подключении к боевой базе через прокси-сервер (Neon pooler) - мы не сказали базе, как обращаться с быстрыми запросами.»
-
-**Маркеры:**
-- ❌ «exit 0 → деплой успешен.»
-- ✅ «Проверка прошла - выкатили на сервер.»
-
-**Структура:**
-- ❌ Документ из 200 строк подряд без разбиения.
-- ✅ Первый абзац - суть. Остальное - в спойлерах по секциям.
-
-</details>
-
-<!-- COMMUNICATION-STYLE-BASE-END -->
-
-**Особенности каналов (дополнительно):**
-- **Telegram бот:** команды - plain text (не в `<code>`), заголовки - `*жирный*` (не `#`), таблицы - списки с `*жирным*`, абзацы - 2-3 предложения.
-- **Документы:** первый абзац - суть. Примеры и эталоны - в конце под спойлером.
-
-### Планировщик датозависимых процессов
-
-> ОС-зависим. Установщики ролей (`roles/*/install.sh`) выбирают **systemd user timers** на Linux (`systemctl --user`) или **launchd** на macOS (по наличию `launchctl` / `uname -s`). Так ставятся таймеры strategist (morning/weekreview), extractor (inbox-check), synchronizer (scheduler). Роли auditor и verifier — on-demand, без расписания.
-
-**Проверка:** `systemctl --user list-timers` (Linux) · `launchctl list` (macOS).
-**Логи:** `journalctl --user -u <unit>.service` (Linux).
-
-> **Календарный конвейер (WP-357)** — файлы `process-catalog.yaml` / `date-ledger.yaml` / `calendar-pipeline.md` / `install-launchd.sh` / `calendar-pipeline-smoke.sh` **в шаблоне НЕ поставляются** (незавершённый дизайн эпохи macOS). Не ссылаться на них как на действующие. Out-of-band watchdog на Linux — через systemd timer, не launchd.
-
----
-
-*Последнее обновление: 2026-05-26*
+*Последнее обновление: 2026-06-26*

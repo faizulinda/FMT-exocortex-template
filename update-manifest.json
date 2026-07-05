@@ -1,5 +1,5 @@
 {
-  "version": "0.35.4",
+  "version": "0.35.5",
   "description": "Манифест платформенных файлов FMT-exocortex-template. Используется update.sh для доставки обновлений.",
   "files": [
     {
@@ -52,9 +52,6 @@
     },
     {
       "path": ".claude/hooks/protocol-stop-gate.sh"
-    },
-    {
-      "path": ".claude/hooks/wakatime-heartbeat.sh"
     },
     {
       "path": ".claude/hooks/wp-gate-reminder.sh"
@@ -871,6 +868,10 @@
     }
   ],
   "deprecated_files": [
+    {
+      "path": ".claude/hooks/wakatime-heartbeat.sh",
+      "reason": "removed platform file, v0.35.5 (#215)"
+    },
     {
       "path": "LEARNING-PATH.md",
       "reason": "moved to docs/LEARNING-PATH.md"

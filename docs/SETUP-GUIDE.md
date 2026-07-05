@@ -9,8 +9,7 @@
 >
 > **Нужна короткая версия?** → [QUICK-START.md](QUICK-START.md) (15 минут, если Git, Node.js и CLI уже установлены). Здесь - полная установка с нуля.
 
-<details open>
-<summary><b>Где ты сейчас и куда идёшь</b></summary>
+## Где ты сейчас и куда идёшь
 
 Платформа открывает доступ по уровням (тирам, `DP.ARCH.002`): от T0 (без аккаунта) до T4 (Созидание, IWE). Возможно, ты уже пользуешься ботом — это T1-T3. Это руководство переводит тебя на **T4**, где появляется персональное рабочее пространство с ИИ-агентами.
 
@@ -23,9 +22,7 @@
 
 > Всё, что ты накопил на T1-T3 (Digital Twin, профиль, прогресс) — сохраняется. T4 добавляет новые возможности, не заменяет старые.
 
-</details>
-<details open>
-<summary><b>Что ты получишь в итоге</b></summary>
+## Что ты получишь в итоге
 
 - **Claude Code** — ИИ-помощник, который знает твои цели, задачи и методологию. Помнит контекст между сессиями
 - **Стратег** (ИИ-агент) — каждое утро готовит план дня, по воскресеньям — итоги недели
@@ -48,10 +45,10 @@
 | **7** | Agent Workspace (данные агентов) | 10 мин | когда >2 агента |
 
 > **Минимум для старта:** Этапы 0 → 1 → 2. Всё остальное подключается в любой момент — скажи Claude *«настрой календарь»* или *«подключи видеозаписи»*.
+>
+> **Kimi как второй агент:** если хочешь работать в IWE не только с Claude, но и с Kimi Code — подключение описано в [`docs/KIMI-SETUP.md`](KIMI-SETUP.md).
 
-</details>
-<details>
-<summary><b>Как открыть терминал</b></summary>
+## Как открыть терминал
 
 Все команды в этом руководстве выполняются в **терминале** — это программа, куда ты вводишь текстовые команды.
 
@@ -68,9 +65,7 @@
 
 > В терминале ты увидишь строку вроде `username@computer:~$` — это приглашение к вводу. Просто набирай команду и нажимай Enter.
 
-</details>
-<details>
-<summary><b>Этап 0: Подготовка (15-20 мин)</b></summary>
+## Этап 0: Подготовка (15-20 мин)
 
 Если у тебя уже установлены Git, Node.js, GitHub CLI и Claude Code CLI — переходи к [Этапу 1](#этап-1-установка-iwe-5-мин).
 
@@ -195,9 +190,7 @@ VS Code — редактор кода с графическим интерфей
 - Скачай и установи: [code.visualstudio.com](https://code.visualstudio.com/)
 - Открой VS Code → нажми `Cmd+Shift+X` (macOS) или `Ctrl+Shift+X` (Windows/Linux) → найди «Claude Code» → нажми Install
 
-</details>
-<details>
-<summary><b>Этап 1: Установка IWE (~5 мин)</b></summary>
+## Этап 1: Установка IWE (~5 мин)
 
 ### 1.1 Создай рабочую папку
 
@@ -321,8 +314,7 @@ bash roles/synchronizer/install.sh
 
 > **Важно:** Если устанавливаешь Синхронизатор, он заменяет отдельные launchd-агенты Стратега единым scheduler. Все роли будут запускаться по расписанию из одной точки.
 
-<details>
-<summary>Что-то не работает?</summary>
+## Что-то не работает?
 
 **`CLAUDE.md` не найден:**
 ```bash
@@ -353,11 +345,8 @@ mkdir -p DS-strategy/{current,inbox,docs,archive/wp-contexts,exocortex}
 cd DS-strategy && git init && git add -A && git commit -m "Initial"
 gh repo create $(gh api user -q .login)/DS-strategy --private --source=. --push
 ```
-</details>
 
-</details>
-<details>
-<summary><b>Восстановление на новом устройстве (из exocortex-бэкапа)</b></summary>
+## Восстановление на новом устройстве (из exocortex-бэкапа)
 
 Если IWE уже настроен на одном устройстве, на новом **не нужно** инициализировать память с нуля. `day-close.sh --backup` и хук `memory-exocortex-sync.sh` держат зеркало памяти в `DS-strategy/exocortex/`, и оно уезжает на GitHub вместе с governance-репо. `restore-from-exocortex.sh` разворачивает его обратно.
 
@@ -380,9 +369,7 @@ bash ~/IWE/FMT-exocortex-template/scripts/restore-from-exocortex.sh ~/IWE/DS-str
 
 Скрипт: копирует `exocortex/*.md|*.yaml` → auto-memory (`~/.claude/projects/<slug>-IWE/memory/`), `exocortex/CLAUDE.md` → `~/IWE/CLAUDE.md`, создаёт симлинк `~/IWE/memory → auto-memory`. Непустую `memory/` без `--force` не трогает (защита от случайной перезаписи рабочей инсталляции).
 
-</details>
-<details>
-<summary><b>Этап 2: Первая стратегическая сессия (~30 мин)</b></summary>
+## Этап 2: Первая стратегическая сессия (~30 мин)
 
 Это самый важный шаг — ты настроишь свои цели и первый план.
 
@@ -410,9 +397,7 @@ Claude прочитает CLAUDE.md и memory/ и проведёт тебя че
 
 **Результат:** заполненные `DS-strategy/docs/Strategy.md`, `Dissatisfactions.md` и первый `WeekPlan` в `DS-strategy/current/`.
 
-</details>
-<details>
-<summary><b>Этап 3: Настройка заметок через Telegram (5 мин, опционально)</b></summary>
+## Этап 3: Настройка заметок через Telegram (5 мин, опционально)
 
 Чтобы отправлять мысли в систему планирования прямо из Telegram:
 
@@ -426,9 +411,7 @@ Claude прочитает CLAUDE.md и memory/ и проведёт тебя че
 
 Заметка попадёт в `DS-strategy/inbox/fleeting-notes.md`. Стратег разберёт её вечером (Note-Review, 23:00) и классифицирует: задача → план, знание → captures, идея → на обсуждение.
 
-</details>
-<details>
-<summary><b>Этап 4: WakaTime — трекинг времени (10 мин, опционально)</b></summary>
+## Этап 4: WakaTime — трекинг времени (10 мин, опционально)
 
 WakaTime трекает время работы автоматически: по проектам, языкам, категориям.
 
@@ -446,9 +429,7 @@ Claude проведёт через установку:
 
 > **Privacy:** WakaTime — SaaS-сервис (wakatime.com, серверы AWS, США). На сервер отправляются **метаданные** работы: имена проектов, имена файлов, языки, ветки, время активности. Содержимое файлов **НЕ** отправляется. CLI — open source ([github.com/wakatime/wakatime-cli](https://github.com/wakatime/wakatime-cli)). Desktop App — closed source, запрашивает Accessibility permission (видит активные окна). Если метаданные критичны — используй self-hosted альтернативу [Wakapi](https://github.com/muety/wakapi) (wakatime-cli поддерживает кастомный `api_url` в `~/.wakatime.cfg`).
 
-</details>
-<details>
-<summary><b>Этап 5: Google Calendar — события дня в Day Open (10 мин, опционально)</b></summary>
+## Этап 5: Google Calendar — события дня в Day Open (10 мин, опционально)
 
 Подключение Google Calendar позволяет видеть события дня прямо в утреннем плане, создавать события из Claude Code и готовиться к встречам.
 
@@ -488,9 +469,7 @@ Claude, подключи ещё один Google Calendar аккаунт
 
 Данные календаря обрабатываются через Google Calendar API. OAuth-токены хранятся локально. Содержимое событий передаётся в Claude API для генерации плана дня. Конфиденциальные события (visibility=private) можно исключить из показа.
 
-</details>
-<details>
-<summary><b>Этап 6: Видеоинтеграция — связь записей с РП (5 мин, опционально)</b></summary>
+## Этап 6: Видеоинтеграция — связь записей с РП (5 мин, опционально)
 
 Если ты записываешь встречи (Zoom, Телемост, Google Meet), Claude может сканировать папки с записями и привязывать видео к рабочим продуктам.
 
@@ -548,9 +527,7 @@ video:
     enabled: true
 ```
 
-</details>
-<details>
-<summary><b>Этап 7: Agent Workspace — отдельное хранилище данных агентов (10 мин, опционально)</b></summary>
+## Этап 7: Agent Workspace — отдельное хранилище данных агентов (10 мин, опционально)
 
 ### Прочитай перед решением
 
@@ -588,9 +565,7 @@ bash setup/optional/setup-agent-workspace.sh
 2. Подключи Scheduler (launchd) — отчёты пойдут в DS-strategy
 3. Когда автокоммитов станет >5/день → создай Agent Workspace
 
-</details>
-<details>
-<summary><b>Автоматическое пробуждение и предотвращение сна</b></summary>
+## Автоматическое пробуждение и предотвращение сна
 
 Агенты запускаются по расписанию. Если ноутбук спит — задачи ждут пробуждения. Настрой автоматический wake, чтобы план был готов до твоего пробуждения.
 
@@ -642,9 +617,7 @@ schtasks /create /tn "ExocortexWake" /tr "wsl ~/IWE/scripts/scheduler.sh dispatc
 
 > **Общее правило:** скрипты `strategist.sh` и `scheduler.sh` автоматически предотвращают сон на время работы (macOS: `caffeinate -diu`, Linux: `systemd-inhibit`). Настроить нужно только **пробуждение** и **запрет засыпания на уровне ОС** для ноутбуков.
 
-</details>
-<details>
-<summary><b>Что происходит дальше (автоматически)</b></summary>
+## Что происходит дальше (автоматически)
 
 После установки система работает сама:
 
@@ -676,19 +649,17 @@ bash ~/IWE/FMT-exocortex-template/roles/strategist/scripts/strategist.sh note-re
 # Итоги недели
 bash ~/IWE/FMT-exocortex-template/roles/strategist/scripts/strategist.sh week-review
 
-# Экстрактор: извлечь знания из текущей сессии
-bash ~/IWE/FMT-exocortex-template/roles/extractor/scripts/extractor.sh session-close
+# Экстрактор: извлечь знания из текущей сессии (собранная runtime-копия, не сырой файл в FMT)
+bash "$IWE_RUNTIME/roles/extractor/scripts/extractor.sh" session-close
 
 # Экстрактор: проверить inbox
-bash ~/IWE/FMT-exocortex-template/roles/extractor/scripts/extractor.sh inbox-check
+bash "$IWE_RUNTIME/roles/extractor/scripts/extractor.sh" inbox-check
 
 # Синхронизатор: статус всех задач
 bash ~/IWE/FMT-exocortex-template/roles/synchronizer/scripts/scheduler.sh status
 ```
 
-</details>
-<details>
-<summary><b>Ежедневная работа: три стадии (ОРЗ)</b></summary>
+## Ежедневная работа: три стадии (ОРЗ)
 
 Каждая сессия в Claude Code проходит три стадии:
 
@@ -701,9 +672,7 @@ Claude выполняет задачу. На каждом рубеже (подз
 ### Закрытие
 Скажи **«закрывай»** → Claude коммитит, пушит, обновляет память, делает backup.
 
-</details>
-<details>
-<summary><b>Обновления</b></summary>
+## Обновления
 
 Шаблон экзокортекса обновляется — новые протоколы, улучшенные промпты, скиллы, скрипты, исправления.
 
@@ -732,9 +701,7 @@ CLAUDE.md (§1-7), memory/ (протоколы, справочники), про�
 
 > Посмотреть доступные обновления без применения: `bash update.sh --check`
 
-</details>
-<details>
-<summary><b>Безопасность и приватность</b></summary>
+## Безопасность и приватность
 
 > Полная политика данных: [DATA-POLICY.md](DATA-POLICY.md) | Каноническое описание: [DP.D.035](https://github.com/TserenTserenov/PACK-digital-platform/blob/main/pack/digital-platform/01-domain-contract/DP.D.035-data-policy.md)
 
@@ -783,9 +750,7 @@ IWE работает преимущественно локально. Вот ч�
 | WakaTime | [Wakapi](https://github.com/muety/wakapi) — полный аналог, свой сервер |
 | GitHub | [Gitea](https://gitea.io/) или [GitLab Self-Managed](https://about.gitlab.com/install/) |
 
-</details>
-<details>
-<summary><b>Часто задаваемые вопросы</b></summary>
+## Часто задаваемые вопросы
 
 **Нужна ли подписка Anthropic?**
 Да, Claude Code требует подписку Anthropic. Рекомендуется начать с **Claude Pro** ($20/мес). При необходимости — **Claude Max** (~$100/мес).
@@ -840,9 +805,7 @@ rm -rf ~/IWE/FMT-exocortex-template
 rm -rf ~/IWE/DS-strategy
 ```
 
-</details>
-<details>
-<summary><b>Следующие шаги</b></summary>
+## Следующие шаги
 
 | Когда | Что | Как |
 |-------|-----|-----|
@@ -851,9 +814,7 @@ rm -rf ~/IWE/DS-strategy
 | По мере роста | Настрой Экстрактор (автоматическое извлечение знаний) | См. [roles/extractor/README.md](../roles/extractor/README.md) |
 | По желанию | Подключи Синхронизатор (уведомления в TG) | См. [roles/synchronizer/README.md](../roles/synchronizer/README.md) |
 
-</details>
-<details open>
-<summary><b>Дополнительные материалы</b></summary>
+## Дополнительные материалы
 
 **В этом репо:**
 
@@ -876,4 +837,3 @@ rm -rf ~/IWE/DS-strategy
 > **Нужна помощь?** Спроси бота @aist_me_bot — он ищет по базе знаний платформы (Pack).
 > **Техническая проблема?** Открой issue: [github.com/aisystant/FMT-exocortex-template/issues](https://github.com/TserenTserenov/FMT-exocortex-template/issues)
 
-</details>

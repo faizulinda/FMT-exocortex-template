@@ -21,7 +21,7 @@ EXIT_GENERAL=1
 
 trap 'echo "ОШИБКА: update.sh прервался на строке ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
-VERSION="2.1.0"  # WP-273 Этап 2: Generated runtime architecture (F)
+VERSION="2.2.0"  # fix #205: --check mode guard + self-integrity hash
 REPO="TserenTserenov/FMT-exocortex-template" # UPSTREAM-CONST: do not substitute
 BRANCH="main"
 RAW_BASE="https://raw.githubusercontent.com/$REPO/$BRANCH"
@@ -112,16 +112,23 @@ echo ""
 
 # === Step 0: Self-update (bootstrap) ===
 echo "[0] Проверка update.sh..."
+# Capture hash before any network activity — used for --check integrity guard below (fix #205)
+SELF_HASH_BEFORE=$(hash_file "$SCRIPT_DIR/update.sh")
 REMOTE_UPDATE="$TMPDIR_UPDATE/update.sh.new"
 if curl $CURL_BASE_OPTS $_CURL_SSL_OPT -sSfL "$RAW_BASE/update.sh" -o "$REMOTE_UPDATE" 2>/dev/null; then
     LOCAL_HASH=$(hash_file "$SCRIPT_DIR/update.sh")
     REMOTE_HASH=$(hash_file "$REMOTE_UPDATE")
     if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
-        echo "  Найдена новая версия update.sh — обновляю..."
-        cp "$REMOTE_UPDATE" "$SCRIPT_DIR/update.sh"
-        chmod +x "$SCRIPT_DIR/update.sh"
-        echo "  Перезапуск..."
-        exec bash "$SCRIPT_DIR/update.sh" "$@"
+        if $CHECK_ONLY; then
+            # In --check mode: report available update without touching the file
+            echo "  ⚠ Новая версия update.sh доступна. Запустите без --check для обновления."
+        else
+            echo "  Найдена новая версия update.sh — обновляю..."
+            cp "$REMOTE_UPDATE" "$SCRIPT_DIR/update.sh"
+            chmod +x "$SCRIPT_DIR/update.sh"
+            echo "  Перезапуск..."
+            exec bash "$SCRIPT_DIR/update.sh" "$@"
+        fi
     fi
 fi
 echo "  update.sh актуален."
@@ -296,7 +303,7 @@ echo "  ✓ .secrets/ (ключи)"
 echo "  ✓ .claude/settings.local.json (permissions)"
 echo "  ✓ sessions/00-index.md (журнал peer-сессий)"
 echo "  ✓ personal/ (ваши файлы)"
-echo "  ✓ DS-strategy/ (ваше планирование)"
+echo "  ✓ ${IWE_GOVERNANCE_REPO:-DS-strategy}/ (ваше планирование)"
 echo ""
 
 if [ "$UNCHANGED" -gt 0 ]; then
@@ -308,6 +315,12 @@ fi
 if $CHECK_ONLY; then
     echo "Режим --check: изменения не применяются."
     echo "Для применения: bash update.sh"
+    # Self-integrity guard: verify update.sh was not mutated during the check pass (fix #205)
+    SELF_HASH_AFTER=$(hash_file "$SCRIPT_DIR/update.sh")
+    if [ "$SELF_HASH_BEFORE" != "$SELF_HASH_AFTER" ]; then
+        echo "ОШИБКА: update.sh мутировал в режиме --check — это баг!" >&2
+        exit 1
+    fi
     exit 0
 fi
 
@@ -517,8 +530,8 @@ if [ -f "$ENV_FILE" ]; then
             # Resolve workspace: ENV_WORKSPACE_DIR (если есть) → fallback dirname $SCRIPT_DIR
             DETECT_WS="${ENV_WORKSPACE_DIR:-$(dirname "$SCRIPT_DIR")}"
             DETECTED_GOV=""
-            if [ -d "${DETECT_WS}/DS-strategy" ]; then
-                DETECTED_GOV="DS-strategy"
+            if [ -d "${DETECT_WS}/${IWE_GOVERNANCE_REPO:-DS-strategy}" ]; then
+                DETECTED_GOV="${IWE_GOVERNANCE_REPO:-DS-strategy}"
             else
                 for d in "${DETECT_WS}"/DS-*; do
                     case "${d##*/}" in
@@ -527,8 +540,8 @@ if [ -f "$ENV_FILE" ]; then
                 done
             fi
             if [ -z "$DETECTED_GOV" ]; then
-                DETECTED_GOV="DS-strategy"
-                echo "  ⚠ Governance repo не найден в $DETECT_WS — fallback DS-strategy. Проверьте .exocortex.env вручную."
+                DETECTED_GOV="${IWE_GOVERNANCE_REPO:-DS-strategy}"
+                echo "  ⚠ Governance repo не найден в $DETECT_WS — fallback ${IWE_GOVERNANCE_REPO:-DS-strategy}. Проверьте .exocortex.env вручную."
             fi
             echo "GOVERNANCE_REPO=$DETECTED_GOV" >> "$ENV_FILE"
             echo "  ✓ Добавлено GOVERNANCE_REPO=$DETECTED_GOV в .exocortex.env (миграция 0.28.5)"
@@ -756,7 +769,7 @@ for f in "${NEW_FILES[@]}" "${UPDATED_FILES[@]}"; do
                 echo "  ✓ $f → workspace"
             fi
             ;;
-        .claude/skills/*|.claude/hooks/*|.claude/rules/*|.claude/lib/*|.claude/config/*|.claude/detectors/*|.claude/scripts/*|.claude/agents/*|.claude/styles/*|.claude/settings.json)
+        .claude/skills/*|.claude/hooks/*|.claude/rules/*|.claude/rules-lazy/*|.claude/lib/*|.claude/config/*|.claude/detectors/*|.claude/scripts/*|.claude/agents/*|.claude/styles/*|.claude/templates/*|.claude/settings.json)
             src="$SCRIPT_DIR/$f"
             dst="$WORKSPACE_DIR/$f"
             mkdir -p "$(dirname "$dst")"
@@ -797,7 +810,7 @@ while IFS='|' read -r fpath _; do
                 fi
             fi
             ;;
-        .claude/skills/*|.claude/hooks/*|.claude/rules/*|.claude/lib/*|.claude/config/*|.claude/detectors/*|.claude/scripts/*|.claude/agents/*|.claude/styles/*|.claude/settings.json)
+        .claude/skills/*|.claude/hooks/*|.claude/rules/*|.claude/rules-lazy/*|.claude/lib/*|.claude/config/*|.claude/detectors/*|.claude/scripts/*|.claude/agents/*|.claude/styles/*|.claude/templates/*|.claude/settings.json)
             dst="$WORKSPACE_DIR/$fpath"
             if [ ! -f "$dst" ]; then
                 mkdir -p "$(dirname "$dst")"
@@ -1007,8 +1020,9 @@ manifest_path = os.path.join(script_dir, "update-manifest.json")
 with open(manifest_path) as f:
     manifest = json.load(f)
 
-known = set(manifest.get("files", []))
-deprecated = set(manifest.get("deprecated_files", []))
+def _path(e): return e["path"] if isinstance(e, dict) else e
+known = {_path(e) for e in manifest.get("files", [])}
+deprecated = {_path(e) for e in manifest.get("deprecated_files", [])}
 all_known = known | deprecated
 
 L1_DIRS = [".claude/hooks", ".claude/rules", ".claude/skills"]
