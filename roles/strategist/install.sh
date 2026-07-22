@@ -28,7 +28,7 @@ echo "  LAUNCHD_DIR: $LAUNCHD_DIR"
 # WP-273 R5 fix (Round 5 Евгения): fail-fast если выбранный plist содержит literal {{...}}.
 # Это предотвращает копирование незаменённых плейсхолдеров в ~/Library/LaunchAgents/
 # (если IWE_RUNTIME не expanded, fallback падает на FMT с placeholder'ами).
-for plist_check in "$LAUNCHD_DIR/com.strategist.morning.plist" "$LAUNCHD_DIR/com.strategist.weekreview.plist"; do
+for plist_check in "$LAUNCHD_DIR/com.strategist.morning.plist" "$LAUNCHD_DIR/com.strategist.weekreview.plist" "$LAUNCHD_DIR/com.strategist.recovery-checkin.plist"; do
     if [ -f "$plist_check" ] && grep -qE '\{\{[A-Z_]+\}\}' "$plist_check" 2>/dev/null; then
         echo "ERROR: $plist_check содержит незаменённые плейсхолдеры:" >&2
         grep -oE '\{\{[A-Z_]+\}\}' "$plist_check" | sort -u | sed 's/^/  /' >&2
@@ -85,10 +85,12 @@ mkdir -p "$TARGET_DIR"
 # Unload old agents if present
 launchctl unload "$TARGET_DIR/com.strategist.morning.plist" 2>/dev/null || true
 launchctl unload "$TARGET_DIR/com.strategist.weekreview.plist" 2>/dev/null || true
+launchctl unload "$TARGET_DIR/com.strategist.recovery-checkin.plist" 2>/dev/null || true
 
 # Copy new plist files
 cp "$LAUNCHD_DIR/com.strategist.morning.plist" "$TARGET_DIR/"
 cp "$LAUNCHD_DIR/com.strategist.weekreview.plist" "$TARGET_DIR/"
+cp "$LAUNCHD_DIR/com.strategist.recovery-checkin.plist" "$TARGET_DIR/"
 
 # Make script executable (runtime path)
 if [ -f "$SCRIPT_TARGET" ]; then
@@ -98,6 +100,7 @@ fi
 # Load agents
 launchctl load "$TARGET_DIR/com.strategist.morning.plist"
 launchctl load "$TARGET_DIR/com.strategist.weekreview.plist"
+launchctl load "$TARGET_DIR/com.strategist.recovery-checkin.plist"
 
 echo "Done. Agents loaded:"
 launchctl list | grep strategist

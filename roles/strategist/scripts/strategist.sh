@@ -314,6 +314,35 @@ case "$1" in
         run_claude "evening"
         notify_telegram "evening"
         ;;
+    "recovery-checkin")
+        log "Recovery check-in: sending evening Telegram nudge (WP-20)"
+        # НЕ через run_claude(): обнаружен воспроизводимый баг (WP-20, 22.07.2026) —
+        # python3-подстановка даты в run_claude(), выполненная в том же процессе прямо
+        # перед perl-обёрнутым timeout(), ломает регистрацию MCP-инструментов в headless
+        # Claude CLI (7/7 неудач через run_claude, 6/6 успехов при прямом вызове claude
+        # без этой связки). Детали и репро → inbox/bugs/bug-2026-07-22-run-claude-mcp-tools.md
+        # (governance-репо). Здесь — прямой вызов, без python3/perl-timeout, с лёгким
+        # ретраем на случай обычного сетевого сбоя (по духу DP.SC.134: retry + backoff).
+        _rc_prompt=$(cat "$PROMPTS_DIR/recovery-checkin.md")
+        _rc_ok=0
+        for _rc_attempt in 1 2; do
+            if cd "${IWE_WORKSPACE:-$HOME/IWE}" && "$CLAUDE_PATH" \
+                --allowedTools "mcp__iwe-knowledge__send_telegram_message" \
+                -p "$_rc_prompt" >> "$LOG_FILE" 2>&1; then
+                if tail -5 "$LOG_FILE" | grep -q "reminder_id"; then
+                    _rc_ok=1
+                    break
+                fi
+            fi
+            log "WARN: recovery-checkin attempt $_rc_attempt did not confirm delivery — retry in 10s"
+            sleep 10
+        done
+        if [ "$_rc_ok" -eq 1 ]; then
+            log "SUCCESS scenario: recovery-checkin"
+        else
+            log "ERROR: recovery-checkin failed after 2 attempts"
+        fi
+        ;;
     "week-review")
         acquire_lock "week-review"
         if already_ran_today "week-review"; then
@@ -406,7 +435,7 @@ case "$1" in
         run_claude "strategy-session"
         ;;
     *)
-        echo "Usage: $0 {morning|note-review|week-review|session-prep|strategy-session|day-plan|day-close}"
+        echo "Usage: $0 {morning|note-review|week-review|session-prep|strategy-session|day-plan|day-close|recovery-checkin}"
         echo ""
         echo "Scenarios:"
         echo "  morning           - 4:00 EET daily (session-prep on Mon, day-plan others)"
@@ -416,6 +445,7 @@ case "$1" in
         echo "  strategy-session  - Manual strategy session (interactive with user)"
         echo "  day-plan          - Manual day plan"
         echo "  day-close         - Manual day close (update WeekPlan + MEMORY + backup)"
+        echo "  recovery-checkin  - 23:00 daily (WP-20: evening Telegram nudge про сон)"
         exit 1
         ;;
 esac
