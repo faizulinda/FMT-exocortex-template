@@ -26,7 +26,6 @@ substituted:
   # Strategist (стратегические сессии, планирование)
   - roles/strategist/scripts/launchd/com.strategist.morning.plist
   - roles/strategist/scripts/launchd/com.strategist.weekreview.plist
-  - roles/strategist/scripts/launchd/com.strategist.recovery-checkin.plist
   - roles/strategist/scripts/strategist.sh
 
   # Extractor (извлечение знаний)

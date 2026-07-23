@@ -304,22 +304,21 @@ CLAUDE_PROJECT_SLUG="$(echo "$WORKSPACE_DIR" | tr '/' '-')"
 # Auto-detect governance repo (used in placeholder substitution + .exocortex.env).
 # Стратегия: (1) DS-strategy (default), (2) wildcard DS-*-strategy* (legacy/локальные имена).
 # Если ни один не найден — default DS-strategy (будет создан при первом seed-ритуале).
-GOV_REPO_DEFAULT="${IWE_GOVERNANCE_REPO:-DS-strategy}"
 GOVERNANCE_REPO=""
-if [ -d "$WORKSPACE_DIR/$GOV_REPO_DEFAULT" ]; then
-    GOVERNANCE_REPO="$GOV_REPO_DEFAULT"
+if [ -d "$WORKSPACE_DIR/DS-strategy" ]; then
+    GOVERNANCE_REPO="DS-strategy"
 fi
 if [ -z "$GOVERNANCE_REPO" ]; then
     for d in "$WORKSPACE_DIR"/DS-*; do
         case "${d##*/}" in
-            DS-*strategy*|"$GOV_REPO_DEFAULT")
+            DS-*strategy*|DS-strategy)
                 GOVERNANCE_REPO="${d##*/}"
                 break
                 ;;
         esac
     done
 fi
-GOVERNANCE_REPO="${GOVERNANCE_REPO:-$GOV_REPO_DEFAULT}"
+GOVERNANCE_REPO="${GOVERNANCE_REPO:-DS-strategy}"
 
 # IWE_TEMPLATE = путь к FMT-репо (где живёт setup.sh).
 IWE_TEMPLATE_PATH="$TEMPLATE_DIR"
@@ -379,16 +378,19 @@ else
 # Do not add shell commands — only KEY=VALUE lines are allowed.
 
 # === Core (substituted into runtime files via build-runtime.sh) ===
-GITHUB_USER=$GITHUB_USER
-WORKSPACE_DIR=$WORKSPACE_DIR
-CLAUDE_PATH=$CLAUDE_PATH
-CLAUDE_PROJECT_SLUG=$CLAUDE_PROJECT_SLUG
-TIMEZONE_HOUR=$TIMEZONE_HOUR
-TIMEZONE_DESC=$TIMEZONE_DESC
-HOME_DIR=$HOME_DIR
-GOVERNANCE_REPO=$GOVERNANCE_REPO
-IWE_TEMPLATE=$IWE_TEMPLATE_PATH
-IWE_RUNTIME=$IWE_RUNTIME_PATH
+# issue #223: значения ВСЕГДА в кавычках — файл читается через `source`,
+# непроцитированное значение с пробелом (напр. TIMEZONE_DESC=4:00 UTC)
+# ломает sourcing: bash трактует хвост как команду ("UTC: command not found").
+GITHUB_USER="$GITHUB_USER"
+WORKSPACE_DIR="$WORKSPACE_DIR"
+CLAUDE_PATH="$CLAUDE_PATH"
+CLAUDE_PROJECT_SLUG="$CLAUDE_PROJECT_SLUG"
+TIMEZONE_HOUR="$TIMEZONE_HOUR"
+TIMEZONE_DESC="$TIMEZONE_DESC"
+HOME_DIR="$HOME_DIR"
+GOVERNANCE_REPO="$GOVERNANCE_REPO"
+IWE_TEMPLATE="$IWE_TEMPLATE_PATH"
+IWE_RUNTIME="$IWE_RUNTIME_PATH"
 
 # === Platform LLM Proxy (optional own API key for unlimited usage) ===
 PLATFORM_LLM_PROXY_URL=https://llm.aisystant.com/v1
@@ -681,6 +683,23 @@ else
     fi
 fi
 
+# === 4f. Regenerate hot-files.list for the actual governance repo (issue #294/#291) ===
+# The repo ships hot-files.list pre-baked with the author's GOVERNANCE_REPO name —
+# without regenerating here, verify-context-budget.sh reports MISSING on any install
+# where GOVERNANCE_REPO differs from the author's.
+if $DRY_RUN; then
+    echo "[DRY RUN] Would regenerate hot-files.list (IWE_GOVERNANCE_REPO=$GOVERNANCE_REPO)"
+else
+    echo "[4f] Regenerating hot-files.list..."
+    if HOTFILES_OUTPUT=$(IWE_ROOT="$WORKSPACE_DIR" IWE_GOVERNANCE_REPO="$GOVERNANCE_REPO" bash "$TEMPLATE_DIR/scripts/generate-hot-files-list.sh" 2>&1); then
+        echo "$HOTFILES_OUTPUT" | sed 's/^/  /'
+    else
+        echo "$HOTFILES_OUTPUT" | sed 's/^/  /'
+        echo "  ⚠ hot-files.list не пересобран — запусти вручную:"
+        echo "    IWE_GOVERNANCE_REPO=$GOVERNANCE_REPO bash $TEMPLATE_DIR/scripts/generate-hot-files-list.sh"
+    fi
+fi
+
 # === 5. Install roles (autodiscovery via role.yaml) ===
 if $CORE_ONLY; then
     echo "[5/6] Автоматизация... пропущена (core mode)"
@@ -735,21 +754,21 @@ else
 fi
 
 # === 6. Create DS-strategy repo ===
-echo "[6/6] Setting up $GOV_REPO_DEFAULT..."
-MY_STRATEGY_DIR="$WORKSPACE_DIR/$GOV_REPO_DEFAULT"
+echo "[6/6] Setting up DS-strategy..."
+MY_STRATEGY_DIR="$WORKSPACE_DIR/DS-strategy"
 STRATEGY_TEMPLATE="$TEMPLATE_DIR/seed/strategy"
 
 if [ -d "$MY_STRATEGY_DIR/.git" ]; then
-    echo "  $GOV_REPO_DEFAULT already exists as git repo."
+    echo "  DS-strategy already exists as git repo."
 elif $DRY_RUN; then
     if [ -d "$STRATEGY_TEMPLATE" ]; then
-        echo "  [DRY RUN] Would create $GOV_REPO_DEFAULT from seed/strategy → $MY_STRATEGY_DIR"
+        echo "  [DRY RUN] Would create DS-strategy from seed/strategy → $MY_STRATEGY_DIR"
         echo "  [DRY RUN] Would init git repo + initial commit"
         if ! $CORE_ONLY; then
-            echo "  [DRY RUN] Would create GitHub repo: $GITHUB_USER/$GOV_REPO_DEFAULT (private)"
+            echo "  [DRY RUN] Would create GitHub repo: $GITHUB_USER/DS-strategy (private)"
         fi
     else
-        echo "  [DRY RUN] Would create minimal $GOV_REPO_DEFAULT (seed/strategy not found)"
+        echo "  [DRY RUN] Would create minimal DS-strategy (seed/strategy not found)"
     fi
 else
     if [ -d "$STRATEGY_TEMPLATE" ]; then
@@ -758,35 +777,35 @@ else
         cd "$MY_STRATEGY_DIR"
         git init
         git add -A
-        git commit -m "Initial exocortex: $GOV_REPO_DEFAULT governance hub"
+        git commit -m "Initial exocortex: DS-strategy governance hub"
 
         if ! $CORE_ONLY; then
             # Create GitHub repo (full mode only)
-            gh repo create "$GITHUB_USER/$GOV_REPO_DEFAULT" --private --source=. --push 2>/dev/null || \
-                echo "  GitHub repo $GOV_REPO_DEFAULT already exists or creation skipped."
+            gh repo create "$GITHUB_USER/DS-strategy" --private --source=. --push 2>/dev/null || \
+                echo "  GitHub repo DS-strategy already exists or creation skipped."
         else
             echo "  Локальный репозиторий создан. Для публикации на GitHub:"
-            echo "    cd $MY_STRATEGY_DIR && gh repo create $GITHUB_USER/$GOV_REPO_DEFAULT --private --source=. --push"
+            echo "    cd $MY_STRATEGY_DIR && gh repo create $GITHUB_USER/DS-strategy --private --source=. --push"
         fi
     else
-        echo "  ERROR: seed/strategy/ not found. $GOV_REPO_DEFAULT will be incomplete."
+        echo "  ERROR: seed/strategy/ not found. DS-strategy will be incomplete."
         echo "  Fix: re-clone the template and run setup.sh again."
         echo "  Creating minimal structure as fallback..."
         mkdir -p "$MY_STRATEGY_DIR"/{current,inbox,archive/wp-contexts,docs,exocortex}
         cd "$MY_STRATEGY_DIR"
         git init
         git add -A
-        git commit -m "Initial exocortex: $GOV_REPO_DEFAULT governance hub (minimal)"
+        git commit -m "Initial exocortex: DS-strategy governance hub (minimal)"
 
         if ! $CORE_ONLY; then
-            gh repo create "$GITHUB_USER/$GOV_REPO_DEFAULT" --private --source=. --push 2>/dev/null || \
-                echo "  GitHub repo $GOV_REPO_DEFAULT already exists or creation skipped."
+            gh repo create "$GITHUB_USER/DS-strategy" --private --source=. --push 2>/dev/null || \
+                echo "  GitHub repo DS-strategy already exists or creation skipped."
         fi
     fi
 fi
 
-# === 7. Clone Base repos (FPF + SPF) ===
-echo "[7/7] Installing Base repos (FPF, SPF)..."
+# === 7. Clone Base repos (ZP + FPF + SPF) ===
+echo "[7/7] Installing Base repos (ZP, FPF, SPF)..."
 if $CORE_ONLY; then
     echo "  пропущено (core mode)"
 elif ! command -v gh >/dev/null 2>&1; then
@@ -810,6 +829,7 @@ else
         fi
     }
 
+    clone_base_repo "ZP" "TserenTserenov/ZP"
     clone_base_repo "FPF" "ailev/FPF"
     clone_base_repo "SPF" "TserenTserenov/SPF"
 fi
@@ -835,7 +855,7 @@ else
     echo "  ✓ CLAUDE.md:   $WORKSPACE_DIR/CLAUDE.md"
     echo "  ✓ Memory:      $CLAUDE_MEMORY_DIR/ ($(ls "$CLAUDE_MEMORY_DIR"/*.md 2>/dev/null | wc -l | tr -d ' ') files)"
     echo "  ✓ Symlink:     $WORKSPACE_DIR/memory → $CLAUDE_MEMORY_DIR"
-    echo "  ✓ $GOV_REPO_DEFAULT: $MY_STRATEGY_DIR/"
+    echo "  ✓ DS-strategy: $MY_STRATEGY_DIR/"
     echo "  ✓ Template:    $TEMPLATE_DIR/"
     echo ""
 

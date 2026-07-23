@@ -1,8 +1,8 @@
 ---
 name: peer-conversation
-description: Многотуровый диалог писателя (Claude) с напарником (Kimi) по задаче пилота (DP.SC.154). Ведёт turn-loop, обнаруживает CONSENSUS/ESCALATE, после консенсуса — Decision Gate (зафиксировать vs реализовать → ревью → проверить → задеплоить), синтезирует report.md через Agent tool.
+description: Многотуровый диалог писателя (Claude) с напарником (Kimi по умолчанию, Codex — второй вендор) по задаче пилота (DP.SC.154). Ведёт turn-loop, обнаруживает CONSENSUS/ESCALATE, после консенсуса — Decision Gate (зафиксировать vs реализовать → ревью → проверить → задеплоить), синтезирует report.md через Agent tool.
 argument-hint: "<описание задачи> | --list | --interrupt <session_id> | --finalize <session_id>"
-version: 1.2.0
+version: 1.3.0
 layer: L1
 status: active
 triggers:
@@ -22,16 +22,23 @@ gates_rationale: "операционный скилл; WP Gate применим 
 
 Задача: $ARGUMENTS
 
-> **Архитектура:** я (Claude) = писатель, Kimi = напарник.
-> Kimi вызывается через `kimi-peer-adapter.sh` напрямую — Bash tool, stdin pipe.
-> `list_peer_statuses` (Local Gateway) — координация файлов, **не** проверка доступности Kimi CLI.
-> Gateway offline ≠ Kimi недоступен.
+> **Архитектура:** я (Claude) = писатель, напарник = `<PEER_VENDOR>` (kimi по умолчанию | codex — issue #296, выбор на Шаге 0а).
+> Напарник вызывается через `<PEER_ADAPTER>` напрямую — Bash tool, stdin pipe (`kimi-peer-adapter.sh` | `codex-peer-adapter.sh`, один и тот же turn-loop ниже, меняется только адаптер).
+> `list_peer_statuses` (Local Gateway) — координация файлов, **не** проверка доступности CLI напарника.
+> Gateway offline ≠ напарник недоступен.
 
 ---
 
 ## When to use
 
-Многотуровый диалог писателя (Claude) с напарником (Kimi) по задаче пилота (DP.SC.154). Ведёт turn-loop, обнаруживает CONSENSUS/ESCALATE, после консенсуса — Decision Gate (зафиксировать vs реализовать → ревью → проверить → задеплоить), синтезирует report.md через Agent tool.
+Многотуровый диалог писателя (Claude) с напарником (Kimi по умолчанию, Codex — второй вендор, Шаг 0а) по задаче пилота (DP.SC.154). Ведёт turn-loop, обнаруживает CONSENSUS/ESCALATE, после консенсуса — Decision Gate (зафиксировать vs реализовать → ревью → проверить → задеплоить), синтезирует report.md через Agent tool.
+
+## Scope boundary — не подменяет решения, зарезервированные за пилотом (найдено 2026-07-07)
+
+> Peer-сессия пригодна для: технических решений, дизайна, code review, поиска компромисса между подходами, подготовки кандидатов к решению.
+> **НЕ пригодна** для решений, которые процесс явно закрепляет за человеком (например, R15 Валидатор в `/apply-captures` — accept/reject/defer кандидатов знания; R1 Стратег — приоритеты месяца). Согласие двух агентов между собой — не решение пилота, даже единогласное и хорошо обоснованное.
+>
+> Если задача внутри пир-сессии требует такого решения — писатель обязан остановиться и спросить пилота напрямую в текущем чате (не через turn-файл), прежде чем фиксировать результат. См. `.claude/skills/apply-captures/SKILL.md` раздел «R15 = живой пилот, не агент» и `${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/bugs/bug-2026-07-07-r15-decisions-bypassed-pilot.md` — прецедент, из-за которого добавлено это ограничение.
 
 ## Шаг 0. Режим
 
@@ -44,6 +51,21 @@ gates_rationale: "операционный скилл; WP Gate применим 
 
 ---
 
+## Шаг 0а. Выбор вендора напарника (issue #296)
+
+Определить три переменные, используемые везде ниже по turn-loop (сам turn-loop одинаков для любого вендора — меняется только то, каким адаптером вызывается напарник):
+
+| `<PEER_VENDOR>` | `<PEER_AGENT_ID>` | `<PEER_ADAPTER>` |
+|---|---|---|
+| `kimi` (по умолчанию) | `kimi-headless` | `${IWE_TEMPLATE:-$HOME/IWE/FMT-exocortex-template}/scripts/kimi-peer-adapter.sh` |
+| `codex` | `codex-headless` | `${IWE_TEMPLATE:-$HOME/IWE/FMT-exocortex-template}/scripts/codex-peer-adapter.sh` |
+
+**Выбор:** `--peer kimi|codex` в `$ARGUMENTS`, иначе явная фраза пилота («с Codex», «через ChatGPT») в задаче, иначе **kimi** (сохраняет прежнее поведение по умолчанию — существующие сессии не меняются). Таблица маршрутизации ниже (routing-design-v1.md, в Шаге 0б) описывает профиль **kimi по умолчанию** (дёшево/быстро для триажа) — для codex профиль не установлен, при явном выборе codex не полагаться на эту таблицу для решений «что ему поручить».
+
+Codex-адаптер не портирует часть опциональных фич kimi-адаптера (IWE_PEER_DIFF, IWE_PEER_INLINE — см. заголовок `codex-peer-adapter.sh`); если сессия их использует — статefulness через git-diff может не сработать для codex-напарника, автопередача останется kimi-only до портирования.
+
+---
+
 ## Шаг 0б. Открытие (WP Gate — только для новой сессии)
 
 Найти WP по задаче: прочитать `${IWE_GOVERNANCE_REPO:-DS-strategy}/WP-REGISTRY.md` (grep по ключевым словам) и `${IWE_GOVERNANCE_REPO:-DS-strategy}/current/WeekPlan W{N}.md`.
@@ -51,10 +73,10 @@ gates_rationale: "операционный скилл; WP Gate применим 
 Анонс пилоту:
 ```
 Открываю peer-сессию (DP.SC.154)
-Роль: Писатель (Claude) | Напарник: Kimi
+Роль: Писатель (Claude) | Напарник: <PEER_VENDOR>
 Задача: <задача>
 РП: WP-NNN «<название>» | или: не найден в плане
-Метод: turn-loop ≤10 ходов | Модель напарника: kimi-headless
+Метод: turn-loop ≤10 ходов | Модель напарника: <PEER_AGENT_ID>
 ```
 
 Если РП **не найден** в плане недели → полный WP Gate Ритуал (`memory/protocol-open.md §Сессия`):
@@ -109,6 +131,16 @@ Slug = первые 4 латинских слова из задачи строч
 `SESSION_ID="${TODAY}-${NUM}-${SLUG}"`
 `SESSION_DIR="${MONTH_DIR}/${SESSION_ID}"`
 
+**1.0 Session-guard open (WP-398, обязательно, ДО любых Write/Edit в сессии).** Синхронизирует пир-сессию с `session-guard.sh` Scope gate — без этого коммит на Шаге 4.5 будет заблокирован pre-commit хуком (mtime файлов сессии старше семафора). WP берётся из Шага 0б (найденный или «day-close»/«unknown», если РП не назначен):
+
+```bash
+IWE_AGENT=claude-code bash "${IWE_SCRIPTS:-$HOME/IWE/scripts}/session-guard.sh" open \
+  --wp "<WP-NNN из Шага 0б>" --agent claude-code \
+  --task "<задача одной строкой>" --slug "$SESSION_ID"
+```
+
+Если команда упала (exit ≠ 0) — не блокировать сессию: сообщить пилоту одной строкой «session-guard open не сработал (<причина>), продолжаю без семафора — на Шаге 4.5 возможна ручная разблокировка через touch/note-file» и идти дальше. Semaphore-файл session-guard создаёт СВОЙ отдельный ORZ-скаффолд (`sessions/<TODAY>-<SESSION_ID>.md`) — это отдельный служебный файл, не путать с closing-файлом пир-сессии из Шага 4.4 (другой путь, другая схема).
+
 **1.1 Создать папку:**
 ```bash
 mkdir -p "$SESSION_DIR"
@@ -122,8 +154,8 @@ session_id: "<SESSION_ID>"
 start_time: "<ISO-8601 UTC>"
 end_time: ""
 writer_agent: "claude-code"
-peer_agent: "kimi-headless"
-peer_cmd: "kimi-peer-adapter"
+peer_agent: "<PEER_AGENT_ID>"  # kimi-headless | codex-headless (Шаг 0а)
+peer_cmd: "<PEER_VENDOR>-peer-adapter"
 peer_model: ""
 status: "started"
 turns_count: 0
@@ -165,7 +197,7 @@ swap_history: []     # [{turn, from, to, reason}] — журнал SWAP_WRITER �
 
 **1.3 Добавить строку в `sessions/00-index.md`** сверху таблицы (первая строка таблицы после `|---|`):
 ```
-| <TODAY> | <SESSION_ID> | <задача ≤50 симв> | claude-code / kimi | 0 | 0 | started | — |
+| <TODAY> | <SESSION_ID> | <задача ≤50 симв> | claude-code / <PEER_VENDOR> | 0 | 0 | started | — |
 ```
 
 ---
@@ -195,7 +227,7 @@ consensus: none
 
 Переменные: `TURN=1`, `ESCALATIONS=0`, `DONE=false`.
 
-### 3.1 Вызов Кими
+### 3.1 Вызов напарника
 
 Прочитать все предыдущие реплики из `SESSION_DIR` в порядке нумерации.
 Составить промпт:
@@ -212,7 +244,7 @@ consensus: none
 ---
 turn: <TURN>
 role: peer
-agent_id: kimi-headless
+agent_id: <PEER_AGENT_ID>
 timestamp: <ISO-8601 UTC>
 consensus: none | proposed | reached | escalate
 ---
@@ -226,15 +258,15 @@ CONSENSUS: <резюме> — если считаешь что договори�
 ESCALATE_TO_USER: <причина> — если писатель игнорирует существенное возражение
 ```
 
-Вызов Кими через Bash:
+Вызов напарника через Bash (`<PEER_ADAPTER>` — Шаг 0а):
 ```bash
 PEER_FILE="${SESSION_DIR}/$(printf '%02d' $TURN)-peer.md"
-echo "<промпт>" | bash "$HOME/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/scripts/kimi-peer-adapter.sh" \
+echo "<промпт>" | bash "<PEER_ADAPTER>" \
   --add-dir "$SESSION_DIR" \
   2>/dev/null > "$PEER_FILE"
 ```
 
-Если файл пустой или exit ≠ 0 → сообщить пилоту: «Kimi не ответил. Повторить или прервать?»
+Если файл пустой или exit ≠ 0 → сообщить пилоту: «Напарник (<PEER_VENDOR>) не ответил. Повторить или прервать?»
 
 ### 3.2 Показать пилоту
 
@@ -656,7 +688,7 @@ Omit если `implementation_pipeline: false` в meta.yaml.
 
 Найти строку с `<SESSION_ID>` и заменить целиком:
 ```
-| <TODAY> | <SESSION_ID> | <задача ≤50> | claude-code / kimi | <TURNS> | <ESCALATIONS> | completed | [report.md](<MONTH>/<SESSION_ID>/report.md) |
+| <TODAY> | <SESSION_ID> | <задача ≤50> | claude-code / <PEER_VENDOR> | <TURNS> | <ESCALATIONS> | completed | [report.md](<MONTH>/<SESSION_ID>/report.md) |
 ```
 (Bash awk — безопасен для строк с `|`.)
 
@@ -670,7 +702,7 @@ Slug-часть (без даты и номера): `SESSION_SLUG=$(echo "$SESSIO
 date: <TODAY>
 type: peer-session
 writer: claude-code
-peer: kimi-headless
+peer: <PEER_AGENT_ID>
 duration_h: <(end_time - start_time) в часах, 1 знак>
 artifacts: sessions/<MONTH>/<SESSION_ID>/report.md
 session_id: <SESSION_ID>
@@ -684,17 +716,75 @@ wp: <WP-NNN или unknown>
 
 ### 4.5 Commit + push
 
+**4.5.0 Заполнить служебный ORZ-скаффолд session-guard** (если Шаг 1.0 создал семафор успешно) — минимально, пойнтером на настоящий отчёт, не дублируя контент:
+
+```bash
+GUARD_ORZ="$HOME/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/sessions/${TODAY}-${SESSION_ID}.md"
+if [ -f "$GUARD_ORZ" ]; then
+  cat > "$GUARD_ORZ" <<EOF
+---
+date: $TODAY
+type: work
+wp: <WP-NNN>
+duration_h: <(end_time - start_time) в часах>
+artifacts: [sessions/$MONTH/$SESSION_ID/report.md]
+agent: claude-code
+---
+
+## Главный инсайт
+
+См. sessions/$MONTH/$SESSION_ID/report.md §4 (зафиксированное решение).
+
+## Контекст
+
+Пир-сессия $SESSION_ID — полная стенограмма и синтез в sessions/$MONTH/$SESSION_ID/.
+
+## Достигнуто
+
+| Артефакт | Описание |
+|----------|----------|
+| sessions/$MONTH/$SESSION_ID/report.md | Итоговый отчёт пир-сессии |
+
+## Ключевые решения
+
+См. report.md §4.
+EOF
+fi
+```
+
+**4.5.1 Commit + push:**
+
 ```bash
 cd "$HOME/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}"
 # pathspec после `--`: commit ТОЛЬКО файлы сессии, не подметаем чужое
 # pre-staged из общего индекса (mis-attribution, см. 2026-06-20-39).
 PATHS=("sessions/$MONTH/$SESSION_ID/" "sessions/00-index.md" "sessions/$MONTH/${TODAY}-${SESSION_SLUG}.md")
+[ -f "$GUARD_ORZ" ] && PATHS+=("$GUARD_ORZ")
 git add "${PATHS[@]}"
 git commit -m "feat(peer): $SESSION_ID — <задача кратко>" -- "${PATHS[@]}"
 git push
 ```
 
-Показать пилоту: «Сессия завершена. Отчёт: `sessions/$MONTH/$SESSION_ID/report.md`»
+**4.5.2 Session-guard close** (best-effort, ПОСЛЕ успешного push — закрывать семафор раньше нельзя, иначе Scope gate на 4.5.1 не найдёт активного семафора):
+
+```bash
+IWE_AGENT=claude-code bash "${IWE_SCRIPTS:-$HOME/IWE/scripts}/session-guard.sh" close --agent claude-code 2>&1 || \
+  echo "session-guard close не прошёл — семафор останется активным до auto-orphan (TTL 30 мин на следующем open), не блокирует пилота"
+```
+
+**Показать пилоту in-chat summary** (прочитать `report.md`, извлечь и вывести):
+
+```
+Сессия завершена.
+
+Ходов: <turns_count> | Роли: <writer_agent> (писатель) · <peer_agent> (напарник) | Эскалаций: <escalations_count>
+
+Решение: <первый пункт §4 из report.md — одна строка на пальцах, без технических кодов>
+
+Подробный отчёт: sessions/<MONTH>/<SESSION_ID>/report.md
+```
+
+Если report.md пустой или субагент-синтезатор не создал его — показать только ссылку без §4.
 
 ---
 

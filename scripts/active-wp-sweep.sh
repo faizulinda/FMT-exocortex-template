@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# routing: helper  skill=day-open,strategy-session  called-by=sonnet
+# routing: helper  called-by=day-open,session-prep  deterministic=true
 # see DP.SC.159, DP.ROLE.059
 # active-wp-sweep.sh — heartbeat sweep активных РП
-# see DP.M.010, DP.SC.033 (WP-297)
+# see WP-283 Шаг E (${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/WP-283-server-day-open-crossplatform.md)
 #
-# Обходит {GOV_REPO}/inbox/WP-*.md, находит файлы с status: in_progress | active,
+# Обходит ${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox/WP-*.md, находит файлы с status: in_progress | active | awaiting-batch,
+# плюс union с WP-IDs из текущего WeekPlan (для pending-РП, которые в плане недели),
 # кросс-чекает с git activity, выводит markdown-таблицу кандидатов.
 #
 # Совместимость: bash 3.2+ (macOS), bash 4+ (Linux/NixOS)
@@ -14,9 +15,17 @@
 
 set -uo pipefail
 
-IWE="${2:-${IWE_ROOT:-$HOME/IWE}}"
-GOV_REPO="${IWE_GOVERNANCE_REPO:-DS-strategy}"
-INBOX="${1:-$IWE/$GOV_REPO/inbox}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SELF_DIR: iwe-env-bootstrap.sh (sourced next) reassigns SCRIPT_DIR to ITS OWN
+# directory (.claude/lib/) — it's sourced, not run in a subshell, so that
+# clobbers ours. Capture our own location under a name it can't collide with
+# before sourcing it (issue #298 migration needs this script's own dir below
+# to find wp-list.py).
+SELF_DIR="$SCRIPT_DIR"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/../.claude/lib/iwe-env-bootstrap.sh" || exit 1
+IWE="${2:-$IWE_ROOT}"
+INBOX="${1:-$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/inbox}"
 GIT_DAYS="${WP_SWEEP_GIT_DAYS:-7}"
 
 # --- Найти python3 с yaml ---
@@ -43,111 +52,136 @@ if [[ ! -d "$INBOX" ]]; then
   exit 0
 fi
 
-# --- Python-хелпер: извлекает wp + title из frontmatter ---
-# Передаём WP_FILE через env-var (защита от спецсимволов в путях).
-# Python-код через quoted heredoc <<'PYEOF' — bash не раскрывает.
-_extract_wp_meta() {
-  WP_FILE_ENV="$1" $PYTHON <<'PYEOF' 2>/dev/null
-import sys, re, os
-path = os.environ["WP_FILE_ENV"]
-wp_num = ""
-title = ""
-try:
-    with open(path, "r", encoding="utf-8") as f:
-        in_fm = False
-        for line in f:
-            line = line.rstrip()
-            if line == "---":
-                if not in_fm:
-                    in_fm = True
-                    continue
-                else:
-                    break
-            if not in_fm:
-                continue
-            # wp: 283 | wp: WP-283 | id: WP-283 — все варианты
-            m = re.match(r"^(?:wp|id):\s*(\S+)", line)
-            if m and not wp_num:
-                raw = m.group(1).strip("\"' ")
-                wp_num = re.sub(r"^WP-", "", raw)
-            m = re.match(r'^title:\s*["\']?(.+?)["\']?\s*$', line)
-            if m:
-                title = m.group(1).strip("\"' ")[:60]
-    # Fallback: если в frontmatter ничего не нашли — извлечь из filename
-    if not wp_num:
-        fname = os.path.basename(path)
-        m = re.match(r"^WP-(\d+)", fname)
-        if m:
-            wp_num = m.group(1)
-except Exception:
-    pass
-print(wp_num + "|" + title)
-PYEOF
+# --- Discovery: single entrypoint (issue #298) ---
+# wp-list.py encodes the two-level inbox layout (flat WP-NNN.md + nested
+# WP-NNN/WP-NNN.md, WP-434) in ONE place — this script used to reimplement it
+# independently (_gather_wp_files/_find_wp_context), the exact duplication
+# issue #298 asked to retire. status_raw + registry_done come back as
+# SEPARATE fields on purpose: this script's whole drift-detection point is
+# comparing them (frontmatter still says active, REGISTRY already ✅) — a
+# merged "status" field would silently hide that mismatch (see wp-list.py's
+# own field docstring).
+#
+# Standard callers (day-open-scaffold.sh, both copies) always pass
+# "$IWE/$GOV/inbox" — derive GOV back out of INBOX so wp-list.py's own path
+# construction matches exactly what INBOX resolved to; fall back to the env
+# default for any caller that passes something else.
+GOV_REPO_FOR_LIST="${IWE_GOVERNANCE_REPO:-DS-strategy}"
+case "$INBOX" in
+  "$IWE"/*/inbox)
+    GOV_REPO_FOR_LIST="${INBOX#"$IWE"/}"
+    GOV_REPO_FOR_LIST="${GOV_REPO_FOR_LIST%/inbox}"
+    ;;
+esac
+
+WP_LIST_SCRIPT="$SELF_DIR/wp-list.py"
+if [[ ! -f "$WP_LIST_SCRIPT" ]]; then
+  echo "<!-- active-wp-sweep: wp-list.py не найден, sweep пропущен -->"
+  exit 0
+fi
+if ! command -v jq >/dev/null 2>&1; then
+  echo "<!-- active-wp-sweep: jq не найден, sweep пропущен -->"
+  exit 0
+fi
+
+# --format json + jq, не --format tsv: bash `IFS=$'\t' read` COLLAPSES an
+# empty field sitting between two tabs — tab is always "IFS whitespace" in
+# bash's field-splitting rules regardless of what IFS is explicitly set to,
+# so a card with no title (WP-401 has `name:`, not `title:`, in this
+# governance repo) silently shifted every field after it left by one and
+# corrupted the row (found live testing this migration — title column showed
+# the STATUS value). \x1f (Unit Separator, jq join) is not IFS whitespace,
+# so empty fields survive `read` correctly.
+WP_LIST_US=$("$PYTHON" "$WP_LIST_SCRIPT" --list-cards --source inbox \
+  --fields wp,title,status_raw,registry_done,card \
+  --format json --governance-repo "$GOV_REPO_FOR_LIST" --iwe-root "$IWE" 2>/dev/null \
+  | jq -r '.[] | [.wp,.title,.status_raw,.registry_done,.card] | join("\u001f")')
+
+# _wp_list_row: look up an already-fetched row by WP number (used by the
+# WeekPlan-union pass below — no second wp-list.py call, same dataset).
+_wp_list_row() {
+  printf '%s\n' "$WP_LIST_US" | awk -F'\x1f' -v n="$1" '$1==n {print; exit}'
 }
 
-# --- WP-REGISTRY drift helper ---
-# Возвращает 0 (done) если WP помечен ✅ в REGISTRY (строка вида | ~~N~~ ...)
-REGISTRY_FILE="$IWE/$GOV_REPO/docs/WP-REGISTRY.md"
-_wp_done_in_registry() {
-  local wp_num="$1"
-  [[ -f "$REGISTRY_FILE" ]] || return 1
-  grep -qE "^\| ~~0*${wp_num}~~" "$REGISTRY_FILE" 2>/dev/null
+# --- Union: WP-IDs из текущего WeekPlan (для pending-РП в плане недели) ---
+# Находит первый файл WeekPlan W*.md в current/ и извлекает все WP-NNN из него.
+_weekplan_wp_ids() {
+  local weekplan
+  weekplan=$(ls -t "$IWE/${IWE_GOVERNANCE_REPO:-DS-strategy}/current/WeekPlan"*.md 2>/dev/null | head -1)
+  [[ -f "$weekplan" ]] || return
+  grep -oE 'WP-[0-9]+' "$weekplan" 2>/dev/null | grep -oE '[0-9]+' | sort -u
 }
 
-# --- Собрать WP-файлы с in_progress или active ---
+WEEKPLAN_IDS=$(_weekplan_wp_ids)
+
+# --- Собрать WP-файлы с in_progress, active или awaiting-batch ---
 FOUND=0
 DRIFT_ROWS=""
 OUTPUT_ROWS=""
+SEEN_WP_NUMS=""
 
-for WP_FILE in "$INBOX"/WP-*.md; do
-  [[ -f "$WP_FILE" ]] || continue
+_git_activity_cell() {
+  local wp_num="$1" git_info="" git_dir repo_dir hit
+  while IFS= read -r git_dir; do
+    repo_dir="$(dirname "$git_dir")"
+    hit=$(git -C "$repo_dir" log \
+      --since="${GIT_DAYS} days ago" --oneline --grep="WP-${wp_num}" --all 2>/dev/null | head -1)
+    if [[ -n "$hit" ]]; then git_info="$hit"; break; fi
+  done < <(find "$IWE" -maxdepth 2 -name ".git" -type d 2>/dev/null)
+  if [[ -n "$git_info" ]]; then echo "${git_info:0:55}"; else echo "нет (${GIT_DAYS}д)"; fi
+}
 
-  # Быстрый grep: есть ли нужный статус?
-  grep -qE "^status: (in_progress|active)" "$WP_FILE" 2>/dev/null || continue
+while IFS=$'\x1f' read -r WP_NUM WP_TITLE STATUS_RAW REGISTRY_DONE WP_FILE; do
+  [[ -z "$WP_NUM" ]] && continue
 
-  FILENAME=$(basename "$WP_FILE" .md)
-
-  # Извлечь номер и заголовок
-  META=$(_extract_wp_meta "$WP_FILE")
-  WP_NUM="${META%%|*}"
-  WP_TITLE="${META##*|}"
-  [[ -z "$WP_TITLE" ]] && WP_TITLE="$FILENAME"
+  case "$STATUS_RAW" in
+    in_progress|active|awaiting-batch) ;;
+    *) continue ;;
+  esac
 
   WP_LABEL="WP-${WP_NUM:-??}"
+  [[ -z "$WP_TITLE" ]] && WP_TITLE="$(basename "$WP_FILE" .md)"
+  # 60-char cap — table-readability choice this script always made (long
+  # titles used to blow out the markdown column); wp-list.py itself returns
+  # full titles for other consumers, truncation belongs here at display time.
+  WP_TITLE="${WP_TITLE:0:60}"
 
   # Drift-check: если в REGISTRY помечен ✅ — это zombie, вывести предупреждение
-  if [[ -n "$WP_NUM" ]] && _wp_done_in_registry "$WP_NUM"; then
+  if [[ "$REGISTRY_DONE" == "true" ]]; then
     DRIFT_ROWS="${DRIFT_ROWS}| ⚠️ **${WP_LABEL}** ${WP_TITLE} | frontmatter=active, REGISTRY=✅ done — archive: \`mv inbox/ → archive/wp-contexts/\` |
 "
     continue
   fi
 
   FOUND=$((FOUND + 1))
+  # Запомнить номер — чтобы не дублировать в union-блоке
+  SEEN_WP_NUMS="${SEEN_WP_NUMS} ${WP_NUM} "
 
-  # Git activity: ищем во всех git-репо под IWE
-  GIT_INFO=""
-  if [[ -n "$WP_NUM" ]]; then
-    while IFS= read -r GIT_DIR; do
-      REPO_DIR="$(dirname "$GIT_DIR")"
-      HIT=$(git -C "$REPO_DIR" log \
-        --since="${GIT_DAYS} days ago" \
-        --oneline \
-        --grep="WP-${WP_NUM}" \
-        --all \
-        2>/dev/null | head -1)
-      if [[ -n "$HIT" ]]; then
-        GIT_INFO="$HIT"
-        break
-      fi
-    done < <(find "$IWE" -maxdepth 2 -name ".git" -type d 2>/dev/null)
-  fi
-
-  GIT_CELL="${GIT_INFO:0:55}"
-  [[ -z "$GIT_CELL" ]] && GIT_CELL="нет (${GIT_DAYS}д)"
-
+  GIT_CELL=$(_git_activity_cell "$WP_NUM")
   OUTPUT_ROWS="${OUTPUT_ROWS}| **${WP_LABEL}** ${WP_TITLE} | ${GIT_CELL} |
 "
-done
+done <<< "$WP_LIST_US"
+
+# --- Union: добавить pending-РП из WeekPlan, которых ещё нет в результатах ---
+if [[ -n "$WEEKPLAN_IDS" ]]; then
+  while IFS= read -r WP_NUM; do
+    [[ -z "$WP_NUM" ]] && continue
+    # Пропустить если уже найден через inbox-статус
+    [[ " $SEEN_WP_NUMS " == *" $WP_NUM "* ]] && continue
+    ROW=$(_wp_list_row "$WP_NUM")
+    [[ -n "$ROW" ]] || continue
+    IFS=$'\x1f' read -r _ WP_TITLE _ REGISTRY_DONE _ <<< "$ROW"
+    # Пропустить если помечен ✅ в REGISTRY
+    [[ "$REGISTRY_DONE" == "true" ]] && continue
+    [[ -z "$WP_TITLE" ]] && WP_TITLE="WP-${WP_NUM}"
+    WP_TITLE="${WP_TITLE:0:60}"
+    WP_LABEL="WP-${WP_NUM}"
+    FOUND=$((FOUND + 1))
+    GIT_CELL=$(_git_activity_cell "$WP_NUM")
+    OUTPUT_ROWS="${OUTPUT_ROWS}| **${WP_LABEL}** ${WP_TITLE} | ${GIT_CELL} |
+"
+  done <<< "$WEEKPLAN_IDS"
+fi
 
 # --- Вывод ---
 if [[ $FOUND -eq 0 ]] && [[ -z "$DRIFT_ROWS" ]]; then

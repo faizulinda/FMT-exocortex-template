@@ -4,13 +4,6 @@
 
 set -e
 
-# Load canonical path variables if launchd/systemd did not inject them.
-# This makes the runner self-contained when invoked outside a fully-sourced shell.
-if [ -f "$HOME/.iwe-paths" ]; then
-    # shellcheck source=/dev/null
-    . "$HOME/.iwe-paths"
-fi
-
 # Предотвращаем сон: -i (idle, работает на батарее) -d (display) -u (user activity)
 # Флаг -s (system sleep) не используем — он НЕ работает на батарее (OBC может переключить профиль)
 # Linux: caffeinate отсутствует — guard через command -v (на Linux достаточно, что cron/systemd сам управляет sleep)
@@ -27,15 +20,6 @@ REPO_DIR="$(dirname "$SCRIPT_DIR")"
 # На сервере (без build-runtime): резолвится через env vars с fallback.
 # IWE_WORKSPACE / IWE_GOVERNANCE_REPO задаются в /etc/iwe/env или ~/.config/aist/env.
 WORKSPACE="${IWE_WORKSPACE:-$HOME/IWE}/${IWE_GOVERNANCE_REPO:-DS-strategy}"
-
-# issue #17: load NOTIFY_SH_PATH from params.yaml if not already set in environment
-if [ -z "${NOTIFY_SH_PATH:-}" ]; then
-    _params="${IWE_WORKSPACE:-$HOME/IWE}/params.yaml"
-    if [ -f "$_params" ]; then
-        _notify_val=$(grep -E '^notify_sh_path:' "$_params" | sed 's/^notify_sh_path:[[:space:]]*//;s/^"//;s/"$//;s/^'"'"'//;s/'"'"'$//' | tr -d '[:space:]')
-        [ -n "$_notify_val" ] && export NOTIFY_SH_PATH="$_notify_val"
-    fi
-fi
 
 # Guard: IWE_GOVERNANCE_REPO mismatch (Claude peer-review, 2026-05-26)
 EXPECTED_GOV=$(grep 'IWE_GOVERNANCE_REPO=' "$HOME/.iwe-paths" 2>/dev/null | sed 's/.*="//;s/"$//' || echo "DS-strategy")
@@ -108,14 +92,9 @@ log() {
 notify() {
     local title="$1"
     local message="$2"
-    # issue #17: NOTIFY_SH_PATH override for Linux/Docker (set in params.yaml or .exocortex.env)
-    if [ -n "${NOTIFY_SH_PATH:-}" ] && [ -x "$NOTIFY_SH_PATH" ]; then
-        "$NOTIFY_SH_PATH" "$title" "$message" 2>/dev/null || true
-    else
-        printf 'display notification "%s" with title "%s"' "$message" "$title" | osascript 2>/dev/null \
-            || notify-send "$title" "$message" 2>/dev/null \
-            || true
-    fi
+    printf 'display notification "%s" with title "%s"' "$message" "$title" | osascript 2>/dev/null \
+        || notify-send "$title" "$message" 2>/dev/null \
+        || true
 }
 
 notify_telegram() {
@@ -141,15 +120,6 @@ run_claude() {
 
     if [ ! -f "$command_path" ]; then
         log "ERROR: Command file not found: $command_path"
-        log "  PROMPTS_DIR=$PROMPTS_DIR"
-        log "  IWE_TEMPLATE=${IWE_TEMPLATE:-<not set>}"
-        log "  HOME=$HOME"
-        log "  Available prompts:"
-        if [ -d "$PROMPTS_DIR" ]; then
-            ls -1 "$PROMPTS_DIR" >> "$LOG_FILE" 2>&1 || true
-        else
-            log "  (directory does not exist)"
-        fi
         exit 1
     fi
 
@@ -267,9 +237,7 @@ acquire_lock() {
 
 # Читаем strategy_day из конфига (L4 Personal)
 RHYTHM_CONFIG="$HOME/.claude/projects/-Users-$(whoami)-IWE/memory/day-rhythm-config.yaml"
-WEEK_CLOSE_DAY_NAME=$(grep 'week_close_day:' "$RHYTHM_CONFIG" 2>/dev/null | awk '{print $2}' || true)
 STRATEGY_DAY_NAME=$(grep 'strategy_day:' "$RHYTHM_CONFIG" 2>/dev/null | awk '{print $2}' || echo "monday")
-STRATEGY_DAY_NAME="${WEEK_CLOSE_DAY_NAME:-$STRATEGY_DAY_NAME}"
 # Конвертируем имя дня в номер (1=Mon..7=Sun)
 case "$STRATEGY_DAY_NAME" in
     monday)    STRATEGY_DAY_NUM=1 ;;
@@ -304,44 +272,25 @@ case "$1" in
             run_claude "session-prep" "claude-sonnet-4-6"
             notify_telegram "session-prep"
         else
-            log "Morning: running day plan"
-            run_claude "day-plan" "claude-sonnet-4-6"
-            notify_telegram "day-plan"
+            # Canonical Day Open pipeline: deterministic scaffold (reads priorities.yaml,
+            # enforces ТВС section order, runs server-news.sh for «Мир»). The free-form
+            # prompt is fallback ONLY — it ignores priorities.yaml and the scaffold, which
+            # was the root cause of the 2026-06-21 structure/priority drift.
+            log "Morning: running canonical Day Open pipeline"
+            DAY_OPEN_PIPELINE="$WORKSPACE/scripts/day-open-pipeline.sh"
+            if [ -f "$DAY_OPEN_PIPELINE" ] && bash "$DAY_OPEN_PIPELINE" >> "$LOG_FILE" 2>&1; then
+                log "Morning: Day Open pipeline OK (scaffold + llm-fill)"
+            else
+                log "WARN: Day Open pipeline unavailable/failed — fallback to free-form day-plan prompt"
+                run_claude "day-plan" "claude-sonnet-4-6"
+                notify_telegram "day-plan"
+            fi
         fi
         ;;
     "evening")
         log "Evening: running evening review"
         run_claude "evening"
         notify_telegram "evening"
-        ;;
-    "recovery-checkin")
-        log "Recovery check-in: sending evening Telegram nudge (WP-20)"
-        # НЕ через run_claude(): обнаружен воспроизводимый баг (WP-20, 22.07.2026) —
-        # python3-подстановка даты в run_claude(), выполненная в том же процессе прямо
-        # перед perl-обёрнутым timeout(), ломает регистрацию MCP-инструментов в headless
-        # Claude CLI (7/7 неудач через run_claude, 6/6 успехов при прямом вызове claude
-        # без этой связки). Детали и репро → inbox/bugs/bug-2026-07-22-run-claude-mcp-tools.md
-        # (governance-репо). Здесь — прямой вызов, без python3/perl-timeout, с лёгким
-        # ретраем на случай обычного сетевого сбоя (по духу DP.SC.134: retry + backoff).
-        _rc_prompt=$(cat "$PROMPTS_DIR/recovery-checkin.md")
-        _rc_ok=0
-        for _rc_attempt in 1 2; do
-            if cd "${IWE_WORKSPACE:-$HOME/IWE}" && "$CLAUDE_PATH" \
-                --allowedTools "mcp__iwe-knowledge__send_telegram_message" \
-                -p "$_rc_prompt" >> "$LOG_FILE" 2>&1; then
-                if tail -5 "$LOG_FILE" | grep -q "reminder_id"; then
-                    _rc_ok=1
-                    break
-                fi
-            fi
-            log "WARN: recovery-checkin attempt $_rc_attempt did not confirm delivery — retry in 10s"
-            sleep 10
-        done
-        if [ "$_rc_ok" -eq 1 ]; then
-            log "SUCCESS scenario: recovery-checkin"
-        else
-            log "ERROR: recovery-checkin failed after 2 attempts"
-        fi
         ;;
     "week-review")
         acquire_lock "week-review"
@@ -435,7 +384,7 @@ case "$1" in
         run_claude "strategy-session"
         ;;
     *)
-        echo "Usage: $0 {morning|note-review|week-review|session-prep|strategy-session|day-plan|day-close|recovery-checkin}"
+        echo "Usage: $0 {morning|note-review|week-review|session-prep|strategy-session|day-plan|day-close}"
         echo ""
         echo "Scenarios:"
         echo "  morning           - 4:00 EET daily (session-prep on Mon, day-plan others)"
@@ -445,7 +394,6 @@ case "$1" in
         echo "  strategy-session  - Manual strategy session (interactive with user)"
         echo "  day-plan          - Manual day plan"
         echo "  day-close         - Manual day close (update WeekPlan + MEMORY + backup)"
-        echo "  recovery-checkin  - 23:00 daily (WP-20: evening Telegram nudge про сон)"
         exit 1
         ;;
 esac
