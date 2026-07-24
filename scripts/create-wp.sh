@@ -6,11 +6,16 @@
 # see DP.M.010, DP.ROLE.037
 #
 # Использование:
-#   bash create-wp.sh --title "Название" --budget 5h --priority P3 [--slug slug] [--repo "репо"] [--related "WP-150:dependency,WP-167:продукт"]
+#   bash create-wp.sh --title "Название" --budget 5h --priority P3 [--slug slug] [--repo "репо"] [--zone Work|Self|Side] [--deadline "дата"] [--related "WP-150:dependency,WP-167:продукт"]
 #   bash create-wp.sh --title "Название" --budget 5h --priority P3 --no-consent-check
 #
 # Предусловие: consent state file должен существовать:
 #   touch ${IWE:-$HOME/IWE}/.claude/state/wp-consent-{N}
+#
+# Схема REGISTRY: скрипт сам определяет набор колонок по заголовку таблицы
+# (обязательны только "#" и "Название"; остальные — P/Ст/Репо/Зона/Источник/
+# Бюджет/Дедлайн/Активация — заполняются, если колонка присутствует, иначе
+# пропускаются). см. bug-2026-07-24-create-wp-registry-schema-drift.md.
 #
 # Совместимость: bash 3.2+ (macOS), bash 4+ (Linux)
 
@@ -29,6 +34,8 @@ BUDGET=""
 PRIORITY="P3"
 SLUG=""
 REPO=""
+ZONE=""
+DEADLINE=""
 RELATED=""
 RESULT=""
 SKIP_CONSENT=0
@@ -40,6 +47,8 @@ while [[ $# -gt 0 ]]; do
     --priority) PRIORITY="$2"; shift 2 ;;
     --slug)     SLUG="$2";     shift 2 ;;
     --repo)     REPO="$2";     shift 2 ;;
+    --zone)     ZONE="$2";     shift 2 ;;
+    --deadline) DEADLINE="$2"; shift 2 ;;
     --related)  RELATED="$2";  shift 2 ;;
     --result)   RESULT="$2";   shift 2 ;;
     --no-consent-check) SKIP_CONSENT=1; shift ;;
@@ -49,7 +58,7 @@ done
 
 # --- Валидация ---
 if [[ -z "$TITLE" || -z "$BUDGET" ]]; then
-  echo "Использование: $0 --title \"Название\" --budget 5h [--priority P3] [--slug slug] [--repo репо] [--related \"WP-NNN:тип\"] [--result R3]" >&2
+  echo "Использование: $0 --title \"Название\" --budget 5h [--priority P3] [--slug slug] [--repo репо] [--zone Work|Self|Side] [--deadline дата] [--related \"WP-NNN:тип\"] [--result R3]" >&2
   exit 1
 fi
 
@@ -76,6 +85,27 @@ PYEOF
 if [[ -z "$WP_NUM" || "$WP_NUM" -le 0 ]]; then
   echo "❌ Не удалось определить следующий номер WP из REGISTRY" >&2
   exit 1
+fi
+
+# --- Защита от повторной выдачи номера (issue: create-wp-registry-schema-drift) ---
+# Если предыдущий запуск упал ПОСЛЕ создания inbox/WP-{N}/ но ДО записи в REGISTRY
+# (например, схема REGISTRY не совпала), повторный запуск иначе вычислил бы тот же
+# WP_NUM из REGISTRY (который не обновился) и молча перезаписал бы уже созданный
+# context file содержимым новой задачи. Резервируем номер по факту существования
+# папки, не только по REGISTRY.
+INBOX_MAX_NUM=0
+if [[ -d "$INBOX" ]]; then
+  for d in "$INBOX"/WP-*; do
+    [[ -d "$d" ]] || continue
+    n="${d##*/WP-}"
+    [[ "$n" =~ ^[0-9]+$ ]] || continue
+    (( n > INBOX_MAX_NUM )) && INBOX_MAX_NUM=$n
+  done
+fi
+if (( INBOX_MAX_NUM >= WP_NUM )); then
+  OLD_WP_NUM=$WP_NUM
+  WP_NUM=$(( INBOX_MAX_NUM + 1 ))
+  echo "ℹ️  Номер скорректирован: $OLD_WP_NUM → $WP_NUM (папка inbox/WP-${INBOX_MAX_NUM}/ уже существует — вероятно, от прерванного предыдущего запуска)" >&2
 fi
 
 echo "📋 Следующий номер WP: $WP_NUM"
@@ -200,9 +230,9 @@ echo "   ✅ $WP_FILE"
 # --- Шаг 2: WP-REGISTRY.md ---
 echo "2/5 WP-REGISTRY.md..."
 
-if ! python3 - "$REGISTRY" "$WP_NUM" "$PRIORITY" "$TITLE" "$REPO" "$BUDGET" "$GOV_REPO" <<'PYEOF'
+if ! python3 - "$REGISTRY" "$WP_NUM" "$PRIORITY" "$TITLE" "$REPO" "$BUDGET" "$GOV_REPO" "$ZONE" "$RESULT" "$DEADLINE" <<'PYEOF'
 import sys
-registry_path, wp_num, priority, title, repo, budget, gov_repo = sys.argv[1:8]
+registry_path, wp_num, priority, title, repo, budget, gov_repo, zone, result, deadline = sys.argv[1:11]
 
 with open(registry_path, "r", encoding="utf-8") as f:
     lines = f.readlines()
@@ -220,21 +250,22 @@ if insert_at is None:
     print("❌ Не найден заголовок таблицы REGISTRY", file=sys.stderr)
     sys.exit(1)
 
-# Схема-гард (issue #263, расширено issue #276): раньше писатель требовал ровно
-# 6 колонок в заголовке — REGISTRY с легитимно другим числом/порядком колонок
-# (та же семантика, доп. колонка сверху) блокировался целиком, хотя читатель
-# (check-wp-format.py::find_column_indices) уже толерантен к такой вариации.
-# Вместо счёта колонок — строим {имя: индекс} по фактическому заголовку и
-# проверяем наличие 6 канонических имён, не их порядок/количество.
+# Схема-гард (issue #263, расширено issue #276, переписано bug-2026-07-24
+# create-wp-registry-schema-drift): реестры реально расходятся по набору колонок —
+# вендорский skeleton пишет P/Ст/Репо (Приоритет/Статус/Репозитории), а репо,
+# выросшие из него органически, добавляют свои (Зона/Источник/Дедлайн/Активация)
+# и могут не иметь P/Репо вовсе. Вместо требования конкретных 6 имён — строим
+# {имя: индекс} по ФАКТИЧЕСКОМУ заголовку и заполняем любую распознанную колонку,
+# какая есть; жёстко обязательны только "#" и "Название" (без них некуда писать
+# номер и заголовок задачи — это единственные два столбца, без которых строка
+# бессмысленна в любой схеме).
 header_cols = [c.strip() for c in header_line.strip().strip("|").split("|")]
-CANONICAL_NAMES = ["#", "P", "Название", "Ст", "Репо", "Бюджет"]
-# issue #297: вендорский skeleton (templates/strategy-skeleton/docs/WP-REGISTRY.md)
-# пишет полные русские имена («Приоритет», «Статус», «Репозитории»), а не короткие
-# канонические («P», «Ст», «Репо») — та же семантика, другое написание. Раньше
-# сверка требовала буквального совпадения и падала даже на только что созданном
-# из вендорского skeleton реестре. Синонимы резолвятся к канонической колонке до
-# проверки — те же строки find_column_indices() в check-wp-format.py уже читают
-# оба варианта позиционным fallback'ом, здесь та же терпимость явным списком.
+REQUIRED_NAMES = ["#", "Название"]
+# issue #297: вендорский skeleton пишет полные русские имена («Приоритет»,
+# «Статус», «Репозитории»), а не короткие канонические («P», «Ст», «Репо») —
+# та же семантика, другое написание. Синонимы резолвятся к канонической колонке
+# до заполнения — те же строки find_column_indices() в check-wp-format.py уже
+# читают оба варианта позиционным fallback'ом, здесь та же терпимость явным списком.
 COLUMN_SYNONYMS = {
     "Приоритет": "P",
     "Статус": "Ст",
@@ -245,39 +276,39 @@ col_index = {}
 for i, name in enumerate(header_cols):
     canonical = COLUMN_SYNONYMS.get(name, name)
     col_index.setdefault(canonical, i)
-missing_names = [name for name in CANONICAL_NAMES if name not in col_index]
-if missing_names:
+missing_required = [name for name in REQUIRED_NAMES if name not in col_index]
+if missing_required:
     print(
         "❌ WP-REGISTRY.md: заголовок таблицы не содержит обязательных колонок {}.".format(
-            missing_names
+            missing_required
         ),
         file=sys.stderr,
     )
     print("   Заголовок: {}".format(header_line.strip()), file=sys.stderr)
     print(
-        "   create-wp.sh требует колонки # | P | Название | Ст | Репо | Бюджет —",
+        "   create-wp.sh требует как минимум # и Название — без них некуда писать",
         file=sys.stderr,
     )
-    print(
-        "   без них не знает, куда писать новую строку.",
-        file=sys.stderr,
-    )
-    print(
-        "   Приведите заголовок REGISTRY к схеме с этими 6 колонками (порядок и",
-        file=sys.stderr,
-    )
-    print("   доп. колонки — свободные), затем повторите создание РП.", file=sys.stderr)
+    print("   номер и заголовок задачи.", file=sys.stderr)
     sys.exit(1)
 
 repo_cell = repo if repo else "{}/inbox/WP-{}/".format(gov_repo, wp_num)
+activation_default = "Детали: `inbox/WP-{0}/WP-{0}.md`".format(wp_num)
 values_by_name = {
-    "#": wp_num,
+    "#": "**{}**".format(wp_num),
     "P": priority,
     "Название": "**{}**".format(title),
-    "Ст": "⏳",
+    "Ст": "⏳ pending",
     "Репо": repo_cell,
     "Бюджет": budget,
+    "Зона": zone if zone else "—",
+    "Источник": result if result else "—",
+    "Дедлайн": deadline if deadline else "—",
+    "Активация": activation_default,
 }
+# Колонки, для которых реестр не дал соответствующего значения (например, "Зона"
+# в вендорской схеме или "P"/"Репо" в эволюционировавшей схеме без этих полей),
+# просто не заполняются — остаются "—" вместо жёсткого падения на несовпадении.
 row_cells = ["—"] * len(header_cols)
 for name, idx in col_index.items():
     if name in values_by_name:
