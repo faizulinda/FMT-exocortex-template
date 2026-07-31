@@ -95,15 +95,25 @@ do_backup() {
       cp "$rhythm_src" "$rhythm_dst"
     else
       python3 - "$rhythm_src" "$rhythm_dst" << 'PYEOF'
-import sys, yaml
+import sys
+from ruamel.yaml import YAML
+
+# ruamel (round-trip) вместо plain yaml.safe_load/dump — тот сохраняет
+# структуру, но теряет комментарии шаблона (issue: пересборка после
+# установки pyyaml стёрла все комментарии в day-rhythm-config.yaml).
+yaml = YAML()
+yaml.allow_unicode = True
+yaml.preserve_quotes = True
+yaml.indent(mapping=2, sequence=4, offset=2)
+yaml.width = 4096
 
 src_path, dst_path = sys.argv[1], sys.argv[2]
 with open(src_path) as f:
-    src_data = yaml.safe_load(f) or {}
+    src_data = yaml.load(f) or {}
 with open(dst_path) as f:
-    dst_data = yaml.safe_load(f) or {}
+    dst_data = yaml.load(f) or {}
 
-merged = dict(src_data)
+merged = src_data  # хранит комментарии шаблона — не копировать в plain dict
 
 # Preserve non-empty user values from dst (L4 config, user-editable keys)
 USER_KEYS = [("day_open", "calendar_ids")]
@@ -113,7 +123,7 @@ for section, key in USER_KEYS:
         merged.setdefault(section, {})[key] = dst_val
 
 with open(dst_path, "w") as f:
-    yaml.dump(merged, f, default_flow_style=False, allow_unicode=True)
+    yaml.dump(merged, f)
 PYEOF
     fi
   fi
