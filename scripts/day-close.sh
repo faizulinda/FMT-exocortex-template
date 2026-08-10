@@ -76,17 +76,40 @@ do_backup() {
   fi
 
   # Mirror *.md/*.yaml/*.yml from auto-memory; --delete prunes files removed upstream.
+  # exocortex/ is a multi-writer destination: extensions/, fault-profile, hindsight,
+  # and legacy decision logs are primary data written by other platform mechanisms.
+  # Root-anchored excludes are therefore ownership boundaries, not copy masks. Rsync
+  # protects excluded receiver paths from --delete unless --delete-excluded is used.
   # CLAUDE.md is excluded so the workspace copy below isn't deleted by --delete.
   # -L (copy-links) dereferences symlinks so target content is copied, not the link —
   # prevents a self-referencing ELOOP symlink from recurring here (WP-7 DOC8).
   # day-rhythm-config.yaml is excluded here and handled separately via merge (see below)
   # to preserve user-configured keys (e.g. calendar_ids) from being overwritten by template defaults.
-  rsync -aL --delete \
+  # issue #343: --include='*/' must come first — without it the trailing --exclude='*'
+  # also excludes directories, so rsync never descends into memory/ subfolders and the
+  # backup silently misses e.g. memory/reference/agent-core.md while reporting success.
+  # -m goes with it: --include='*/' alone recreates the source's ENTIRE directory tree
+  # in the backup, including .git/ internals whose files the final --exclude drops —
+  # hundreds of empty dirs plus a fake exocortex/.git. -m prunes the empty ones.
+  rsync -aLm --delete \
     --exclude='CLAUDE.md' \
     --exclude='day-rhythm-config.yaml' \
+    --exclude='/extensions/***' \
+    --exclude='/agent-fault-profile/***' \
+    --exclude='/hindsight/***' \
+    --exclude='/decisions/***' \
+    --exclude='/rules/***' \
+    --include='*/' \
     --include='*.md' --include='*.yaml' --include='*.yml' \
     --exclude='*' \
     "$MEMORY_SRC/" "$EXOCORTEX_DST/"
+
+  # #380: rules may carry an explicitly legal USER-SPACE block. Mirror them to
+  # a dedicated subtree so recovery never confuses platform rules with memory.
+  if [ -d "$WORKSPACE_DIR/.claude/rules" ]; then
+    mkdir -p "$EXOCORTEX_DST/rules"
+    rsync -a --delete "$WORKSPACE_DIR/.claude/rules/" "$EXOCORTEX_DST/rules/"
+  fi
 
   # Merge day-rhythm-config.yaml: use auto-memory as base, preserve non-empty user values in dst.
   # User-configurable keys protected: day_open.calendar_ids
@@ -97,25 +120,15 @@ do_backup() {
       cp "$rhythm_src" "$rhythm_dst"
     else
       python3 - "$rhythm_src" "$rhythm_dst" << 'PYEOF'
-import sys
-from ruamel.yaml import YAML
-
-# ruamel (round-trip) вместо plain yaml.safe_load/dump — тот сохраняет
-# структуру, но теряет комментарии шаблона (issue: пересборка после
-# установки pyyaml стёрла все комментарии в day-rhythm-config.yaml).
-yaml = YAML()
-yaml.allow_unicode = True
-yaml.preserve_quotes = True
-yaml.indent(mapping=2, sequence=4, offset=2)
-yaml.width = 4096
+import sys, yaml
 
 src_path, dst_path = sys.argv[1], sys.argv[2]
 with open(src_path) as f:
-    src_data = yaml.load(f) or {}
+    src_data = yaml.safe_load(f) or {}
 with open(dst_path) as f:
-    dst_data = yaml.load(f) or {}
+    dst_data = yaml.safe_load(f) or {}
 
-merged = src_data  # хранит комментарии шаблона — не копировать в plain dict
+merged = dict(src_data)
 
 # Preserve non-empty user values from dst (L4 config, user-editable keys)
 USER_KEYS = [("day_open", "calendar_ids")]
@@ -125,7 +138,7 @@ for section, key in USER_KEYS:
         merged.setdefault(section, {})[key] = dst_val
 
 with open(dst_path, "w") as f:
-    yaml.dump(merged, f)
+    yaml.dump(merged, f, default_flow_style=False, allow_unicode=True)
 PYEOF
     fi
   fi

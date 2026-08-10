@@ -83,53 +83,6 @@ bash {{WORKSPACE_DIR}}/scripts/server-calendar.sh --week $(date -v-mon +%Y-%m-%d
 
 Незавершённые РП с pending/in_progress статусами → перенести в новый WeekPlan W{N+1} (создаст session-prep автоматически в Пн 04:00 либо вручную).
 
-### 5a. Завести WeekReport W{N+1} (WP-44, БЛОКИРУЮЩЕЕ)
-
-> **Зачем.** Раньше создание отчёта перекладывалось на session-prep, где такого шага нет ни в одном описании, — файл не заводился, и Day Close всю неделю писал факты в WeekPlan по обходному пути (шаг 9b fallback). Владелец шага — Week Close: он выполняется гарантированно и ровно на границе недель.
-
-1. Архивировать закрываемый отчёт: `git mv "current/WeekReport W{N} *.md" archive/week-reports/`, frontmatter `status: active` → `closed`.
-2. Создать `current/WeekReport W{N+1} YYYY-MM-DD.md` (дата = понедельник новой недели). **Идемпотентно:** файл уже есть → не трогать.
-
-> Даты считает Python, не `date`: BSD и GNU расходятся во флагах `-v`/`-d`, а шаг обязан работать в любой день недели и на стыке года.
-
-```bash
-GOV=~/IWE/${IWE_GOVERNANCE_REPO:-DS-strategy} python3 - <<'PY'
-import datetime, os, pathlib
-gov = pathlib.Path(os.path.expanduser(os.environ["GOV"]))
-t = datetime.date.today()
-# понедельник НАЧИНАЮЩЕЙСЯ недели: сегодня, если Week Close идёт в понедельник, иначе ближайший следующий
-mon = t if t.weekday() == 0 else t + datetime.timedelta(days=7 - t.weekday())
-sun, wk = mon + datetime.timedelta(days=6), f"{mon.isocalendar()[1]:02d}"
-target = gov / "current" / f"WeekReport W{wk} {mon}.md"
-if target.exists():
-    print(f"5a: WeekReport W{wk} уже есть — пропуск")
-else:
-    target.write_text(f"""---
-type: week-report
-week: W{wk}
-date_start: {mon}
-date_end: {sun}
-status: active
-agent: Стратег (R1)
-valid_from: {mon}
----
-
-# WeekReport W{wk}: {mon} — {sun}
-
-> **Split (ОПТ-5, WP-297):** здесь ТОЛЬКО факты недели (коммиты, результаты РП, метрики). План → `WeekPlan W{wk} {mon}.md`.
-> Сводки дней пишет Day Close (шаг 9b), обратная хронология: свежий день сверху.
-
-## Итоги недели W{wk}
-
-**Метрики:** заполняется на Week Close.
-
-""", encoding="utf-8")
-    print(f"5a: создан {target}")
-PY
-```
-
-**Postcondition:** `ls "$GOV"/current/WeekReport\ W*.md` возвращает файл новой недели → иначе шаг не закрыт.
-
 ### 5b. Pending фазы внутри активных РП (B-005)
 
 > **Зачем:** carry-over §5 работает на уровне РП (status: in_progress → перенос). Pending **фазы** внутри Ф-таблиц context-файлов могут потеряться: если родительский РП в `in_progress` — pending-фаза не выделяется автоматически; если родительский ушёл в `done` — фаза теряется вместе с context-файлом.
@@ -244,7 +197,7 @@ echo "=== Hindsight log (last 20) ===" && cat ~/.iwe/hindsight.log 2>/dev/null |
 
 > **Split (WP-297 ОПТ-5):** факты недели живут в `WeekReport W{N}`, не в WeekPlan. WeekPlan — только намерения.
 
-1. Открой текущий `WeekReport W{N} YYYY-MM-DD.md`. **Файла нет** → создать здесь же по шаблону из шага 5a (подставив текущую неделю), не откладывая на другой протокол: раньше эта строка ссылалась на session-prep, где шага создания нет, — так и возник разрыв WP-44.
+1. Открой текущий `WeekReport W{N} YYYY-MM-DD.md` (если нет — создай при следующем session-prep, см. CLAUDE.md §9 правило split).
 2. Дополни секцию «Итоги W{N}» (структура — см. `roles/strategist/prompts/week-review.md`).
 3. Также дополни секцию **«Сверка РП↔НЭП»** в WeekPlan W{N}: для каждого закрытого РП — какая НЭП снята / какой R-результат продвинут? Это вход в Strategy Session W{N+1}.
 4. Заполни секцию **«Рекомендации изменений в НЭП и Стратегию»** в WeekPlan W{N} — что узнали на этой неделе → что менять в `Dissatisfactions.md` / `Strategy.md`.
@@ -293,7 +246,6 @@ git push
 - [ ] Ретро 7 дней: closed/partial/not_started/blocked разобраны
 - [ ] Метрики посчитаны (completion rate, мультипликатор)
 - [ ] Carry-over → W+1 (или явно «нет»)
-- [ ] **WeekReport W{N+1} заведён** (шаг 5a), отчёт W{N} заархивирован со `status: closed`
 - [ ] Pending фазы активных РП обойдены (`pending-phases-sweep.sh` или fallback grep) — решения зафиксированы
 - [ ] Backlog `docs/Backlog.md` обойдён в следующую Strategy Session (либо триггеры активированы, либо явно «B-NNN живёт без триггеров»)
 - [ ] Captures маршрутизированы, уроки записаны
@@ -302,7 +254,7 @@ git push
 - [ ] iCloud backup выполнен (если macOS)
 - [ ] Dirty repos: 0 (или явно проигнорированы)
 - [ ] ТО памяти: distinctions.md/MEMORY.md/memory/*.md проверены, флаги зафиксированы (или «норма»)
-- [ ] Итоги W{N} записаны в WeekReport W{N} (не в WeekPlan — правило ОПТ-5)
+- [ ] Итоги W{N} записаны в WeekPlan
 - [ ] Extensions `.after.md` выполнены (если есть)
 - [ ] Hindsight: container Up, лог без FAIL за неделю, размер БД <100MB
 - [ ] Оценка качества недели q:N задана (1-5) и включена в commit message
