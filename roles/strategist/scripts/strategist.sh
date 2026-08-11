@@ -283,7 +283,18 @@ case "$1" in
             # prompt is fallback ONLY — it ignores priorities.yaml and the scaffold, which
             # was the root cause of the 2026-06-21 structure/priority drift.
             log "Morning: running canonical Day Open pipeline"
-            DAY_OPEN_PIPELINE="$WORKSPACE/scripts/day-open-pipeline.sh"
+            # The pipeline ships with FMT (read-only data), not with the governance repo.
+            # Resolve like PROMPTS_DIR above: $IWE_TEMPLATE → default FMT path → legacy $WORKSPACE.
+            # Before this fix the path was $WORKSPACE/scripts/, which never exists — the
+            # existence check silently short-circuited into the fallback on every run
+            # (13 fallbacks, 0 pipeline runs, 2026-07-23..2026-08-11).
+            if [ -n "${IWE_TEMPLATE:-}" ] && [ -f "$IWE_TEMPLATE/scripts/day-open-pipeline.sh" ]; then
+                DAY_OPEN_PIPELINE="$IWE_TEMPLATE/scripts/day-open-pipeline.sh"
+            elif [ -f "$HOME/IWE/FMT-exocortex-template/scripts/day-open-pipeline.sh" ]; then
+                DAY_OPEN_PIPELINE="$HOME/IWE/FMT-exocortex-template/scripts/day-open-pipeline.sh"
+            else
+                DAY_OPEN_PIPELINE="$WORKSPACE/scripts/day-open-pipeline.sh"
+            fi
             if [ -f "$DAY_OPEN_PIPELINE" ] && bash "$DAY_OPEN_PIPELINE" >> "$LOG_FILE" 2>&1; then
                 log "Morning: Day Open pipeline OK (scaffold + llm-fill)"
             else
