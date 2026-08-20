@@ -1,0 +1,11 @@
+{
+  "_comment": "Личные файлы форка faizulinda: их нет в апстриме, update.sh их не приносит и не должен считать сиротами. Этот файл update.sh не перезаписывает (issue #247).",
+  "excluded_paths": [
+    ".claude/scripts/apply-extensions.sh",
+    ".claude/skills/diagnose-iwe/SKILL.md",
+    "roles/strategist/prompts/recovery-checkin.md",
+    "roles/strategist/scripts/launchd/com.strategist.recovery-checkin.plist",
+    "scripts/template-sync.sh",
+    "scripts/wakatime-fetch.sh"
+  ]
+}
