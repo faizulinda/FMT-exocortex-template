@@ -186,8 +186,15 @@ select_semaphore() {
       [ -z "$cand" ] && continue
       cand_wp=$(grep "^wp: " "$cand" | cut -d' ' -f2- || true)
       cand_slug=$(grep "^slug: " "$cand" | cut -d' ' -f2- || true)
-      if { [ -n "$want_wp" ] && [ "$cand_wp" = "$want_wp" ]; } || \
-         { [ -n "$want_slug" ] && [ "$cand_slug" = "$want_slug" ]; }; then
+      # WP-530 Ф12 (20.08, пир-сессия с Codex): with both selectors given, this
+      # must be an intersection -- a plain OR (as this copy had until now)
+      # matches a stale sibling session sharing only the wp, causing false
+      # ambiguity. Synced from the canonical ~/IWE/scripts/session-guard.sh
+      # (WP-484 Ф49, 04.08) -- same fix, this copy just hadn't received it.
+      if { [ -n "$want_wp" ] && [ -n "$want_slug" ] &&
+           [ "$cand_wp" = "$want_wp" ] && [ "$cand_slug" = "$want_slug" ]; } || \
+         { [ -z "$want_slug" ] && [ -n "$want_wp" ] && [ "$cand_wp" = "$want_wp" ]; } || \
+         { [ -z "$want_wp" ] && [ -n "$want_slug" ] && [ "$cand_slug" = "$want_slug" ]; }; then
         matches+=("$cand")
       fi
     done <<< "$candidates"
@@ -598,6 +605,17 @@ if [ "$CMD" = "close" ]; then
     fail "ORZ не прошёл валидацию. Исправь замечания выше и повтори close. Семафор остаётся активным." 5
   fi
 
+  # issue #356: карта раннера — capability-aware гейт. У свежей пользовательской
+  # установки шаблона может не быть process-runner.py/quick-close.yaml вовсе —
+  # тогда Quick Close продолжается вручную (runner_check=not_applicable), видимо
+  # для пилота, а не блокируется навсегда несуществующим раннером. Проверка
+  # потерялась при доставке авторской копии 09-11.08 (у автора раннер есть всегда)
+  # — восстановлена в WP-7 Ф71, сторожится тестом T22.
+  RUNNER_BIN="$IWE_ROOT/$GOV_REPO/scripts/process-runner.py"
+  RUNNER_GRAPH="$IWE_ROOT/$GOV_REPO/scripts/processes/quick-close.yaml"
+  if [ ! -f "$RUNNER_BIN" ] || [ ! -f "$RUNNER_GRAPH" ]; then
+    echo "Session CLOSE: runner_check=not_applicable — process-runner не установлен, ручной Quick Close"
+  else
   # Quick Close — не текстовая декларация: именно терминальная карточка раннера
   # доказывает, что эта сессия прошла обязательный процесс. Сопоставление по slug
   # не даёт чужой параллельной карточке закрыть текущую сессию.
@@ -618,7 +636,7 @@ if [ "$CMD" = "close" ]; then
   # Bypass узкий и предметный, не общий «пропусти карту раннера»: требует
   # ИМЕННО блокировку на этом шаге и подтверждённый push — другой сбой раннера
   # (упавший push, отменённый до commit-push прогон) этим флагом не спрятать.
-  if [ -z "$RUNNER_OK" ] && [ -n "$FORCE_NO_REFLECTION" ]; then
+  if [ -z "$RUNNER_OK" ] && [ -n "${FORCE_NO_REFLECTION:-}" ]; then
     for card in $RUNNER_CARD; do
       [ -f "$card" ] || continue
       grep -q '^process_id: quick-close$' "$card" || continue
@@ -641,6 +659,7 @@ print(json.dumps({"wp": sys.argv[1], "slug": sys.argv[2], "agent": sys.argv[3], 
 
   if [ -z "$RUNNER_OK" ]; then
     fail "Quick Close не завершён для slug '$SLUG': нет terminal RUN-quick-close-${SLUG}*.md. Сначала запусти process-runner.py start quick-close с тем же --slug." 7
+  fi
   fi
 
   # agent status idle
