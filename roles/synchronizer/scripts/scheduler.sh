@@ -205,8 +205,12 @@ dispatch() {
         ran=1
     fi
 
-    # --- Стратег: morning (04:00-21:59) ---
-    if (( 10#$HOUR >= 4 && 10#$HOUR < 22 )) && ! ran_today "strategist-morning"; then
+    # --- Стратег: morning (08:00-21:59) ---
+    # Порог поднят с 4 до 8 решением пилота 24.08 (bug-2026-08-11): при закрытой
+    # крышке DarkWake растягивает прогон с минут до ~5ч, план всё равно нужен
+    # только к моменту открытия ноутбука (~09:00). Если update.sh откатит порог
+    # обратно на 4 — переприменить эту правку.
+    if (( 10#$HOUR >= 8 && 10#$HOUR < 22 )) && ! ran_today "strategist-morning"; then
         log "→ strategist morning (catch-up: hour=$HOUR)"
         if timeout "$TASK_TIMEOUT_LONG" "$STRATEGIST_SH" morning >> "$LOG_FILE" 2>&1; then
             mark_done "strategist-morning"
