@@ -28,6 +28,7 @@ import yaml
 # список описывает реально используемые режимы исполнения скиллов.
 # agent = прогон как subagent; script+judgment = скрипт с LLM-слоем суждения.
 VALID_EXECUTORS = {"script", "haiku", "sonnet", "opus", "mcp-direct", "agent", "script+judgment"}
+PRESERVED_TOP_LEVEL_KEYS = ("reflexes",)
 FRONTMATTER_RE = re.compile(r'^---\n(.*?)\n---\n', re.DOTALL)
 ROUTING_BLOCK_RE = re.compile(
     r'^routing:\n((?:[ \t]+[^\n]+\n?)*)',
@@ -70,24 +71,37 @@ def extract_triggers(fm_content: str) -> list[str]:
     return [t.strip() for t in raw.split(",") if t.strip()]
 
 
-def process_skill(skill_dir: Path) -> Optional[dict]:
+def extract_skip_reason(fm_content: str) -> str:
+    """Return the declared reason why a skill is not automatically routable."""
+    match = re.search(r'^skip_reason:\s*["\']?([^"\'\n]+)', fm_content, re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+    if re.search(r'destructive:\s*true', fm_content) and re.search(
+        r'interactive:\s*true', fm_content
+    ):
+        return "destructive-interactive"
+    return "unspecified"
+
+
+def process_skill(skill_dir: Path) -> dict:
+    """Return a routing entry or a detailed skip record for one skill directory."""
     skill_file = skill_dir / "SKILL.md"
     if not skill_file.exists():
-        return None
+        return {"skipped": skill_dir.name, "skip_reason": "no-SKILL.md"}
 
     text = skill_file.read_text(encoding="utf-8")
     fm_match = FRONTMATTER_RE.match(text)
     if not fm_match:
-        return None
+        return {"skipped": skill_dir.name, "skip_reason": "no-frontmatter"}
 
     fm_content = fm_match.group(1)
     name = extract_name(fm_content)
     if not name:
-        return None
+        return {"skipped": skill_dir.name, "skip_reason": "no-name"}
 
     routing = extract_routing_block(fm_content)
     if not routing:
-        return None  # skill has no routing: — skip
+        return {"skipped": name, "skip_reason": extract_skip_reason(fm_content)}
 
     return {
         "name": name,
@@ -126,8 +140,10 @@ def build_catalog(skills_dir: Path) -> dict:
         if not skill_dir.is_dir():
             continue
         entry = process_skill(skill_dir)
-        if entry is None:
-            skipped.append(skill_dir.name)
+        if "skipped" in entry:
+            skipped.append(
+                {"name": entry["skipped"], "skip_reason": entry["skip_reason"]}
+            )
             continue
         errors = validate_entry(entry)
         if errors:
@@ -160,14 +176,59 @@ def build_catalog(skills_dir: Path) -> dict:
         "total_entries": len(entries),
         "skipped_no_routing": len(skipped),
         "by_executor": stats,
+        "skipped": skipped,
         "entries": entries,
+        "reflexes": [],
     }
+
+
+def _read_existing_catalog(output_path: Path) -> dict:
+    """Load a catalog that is safe to merge without discarding runtime state."""
+    try:
+        existing = yaml.safe_load(output_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise ValueError(f"existing catalog is invalid YAML: {output_path}: {exc}") from exc
+
+    if not isinstance(existing, dict):
+        raise ValueError(f"existing catalog must be a YAML mapping: {output_path}")
+
+    missing = [key for key in PRESERVED_TOP_LEVEL_KEYS if key not in existing]
+    if missing:
+        raise ValueError(
+            f"existing catalog is missing runtime-owned sections {missing}: {output_path}; "
+            "refusing to overwrite it"
+        )
+    for key in PRESERVED_TOP_LEVEL_KEYS:
+        if not isinstance(existing[key], list):
+            raise ValueError(
+                f"existing catalog section {key!r} must be a list: {output_path}"
+            )
+    return existing
+
+
+def merge_preserved_sections(generated: dict, output_path: Path) -> dict:
+    """Preserve only runtime-owned sections from an existing catalog.
+
+    Routing entries and detailed skip records are derived from SKILL.md on every
+    run. Reflexes are maintained by the two-loop execution gate, so losing or
+    malformed reflex state blocks regeneration instead of silently erasing it.
+    """
+    if not output_path.exists():
+        return generated
+
+    existing = _read_existing_catalog(output_path)
+    merged = dict(generated)
+    for key in PRESERVED_TOP_LEVEL_KEYS:
+        merged[key] = existing[key]
+    return merged
 
 
 def print_summary(catalog: dict):
     print(f"OK: executor-catalog generated")
     print(f"    total entries : {catalog['total_entries']}")
-    print(f"    skipped       : {catalog['skipped_no_routing']} (no routing: section)")
+    print(f"    skipped       : {catalog['skipped_no_routing']} (not auto-routable)")
+    for skipped in catalog.get("skipped", []):
+        print(f"      - {skipped['name']}: {skipped['skip_reason']}")
     print(f"    by executor:")
     for ex, count in sorted(catalog["by_executor"].items()):
         print(f"      {ex:12s}: {count}")
@@ -220,11 +281,14 @@ def _without_generation_time(catalog: dict) -> dict:
 def _write_catalog_if_changed(catalog: dict, output_path: Path) -> bool:
     """Atomically replace output only when its semantic content changed."""
     if output_path.is_file():
-        try:
-            existing = yaml.safe_load(output_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, yaml.YAMLError):
-            existing = None
-        if isinstance(existing, dict) and _without_generation_time(existing) == _without_generation_time(catalog):
+        existing = _read_existing_catalog(output_path)
+        for key in PRESERVED_TOP_LEVEL_KEYS:
+            if existing[key] != catalog[key]:
+                raise ValueError(
+                    f"existing catalog section {key!r} changed during generation: "
+                    f"{output_path}; refusing to overwrite it"
+                )
+        if _without_generation_time(existing) == _without_generation_time(catalog):
             return False
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -269,7 +333,17 @@ def main():
         print(f"OK: {catalog['total_entries']} entries validated")
         return
 
-    changed = _write_catalog_if_changed(catalog, output_path)
+    try:
+        catalog = merge_preserved_sections(catalog, output_path)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        changed = _write_catalog_if_changed(catalog, output_path)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
     print_summary(catalog)
     print(f"    output        : {output_path} ({'updated' if changed else 'unchanged'})")
 
