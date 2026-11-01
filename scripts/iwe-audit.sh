@@ -404,7 +404,13 @@ else
                 PROMOTED_DRIFT=$((PROMOTED_DRIFT + 1))
             fi
             if [ $((present & 1)) -eq 1 ] && [ "$seed_ok" = 0 ]; then
-                echo "- ⚠️ \`seed/strategy/scripts/$rel\` отстал от \`scripts/$rel\` — обновить снимок: \`bash \"$IWE_ROOT/FMT-exocortex-template/scripts/check-seed-drift.sh\" --fix\`"
+                # check-seed-drift.sh --fix only rebuilds snapshots that carry the
+                # marker; advising it for an unmarked one changed nothing (#1350).
+                if grep -qF "$SEED_SNAPSHOT_MARKER" "$seed_f"; then
+                    echo "- ⚠️ \`seed/strategy/scripts/$rel\` отстал от \`scripts/$rel\` — обновить снимок: \`bash \"$IWE_ROOT/FMT-exocortex-template/scripts/check-seed-drift.sh\" --fix\`"
+                else
+                    echo "- ⚠️ \`seed/strategy/scripts/$rel\` отстал от \`scripts/$rel\` и не несёт маркер SNAPSHOT — \`check-seed-drift.sh --fix\` такой файл не обновляет; обновить шаблон (\`update.sh\`) или сообщить об устаревшем снимке в issue шаблона"
+                fi
                 PROMOTED_DRIFT=$((PROMOTED_DRIFT + 1))
             fi
             if [ "$present" = 3 ] && [ "$inst_ok" = 1 ] && [ "$seed_ok" = 1 ]; then
@@ -726,6 +732,56 @@ else
 fi
 echo ""
 
+# WP-5 F57: the author's usage instruction (FPF/USING-FPF.md) reaches an
+# installation only through its FPF copy, which update.sh fast-forwards. A copy
+# that is missing, older than the instruction, or behind the server means agents
+# quote FPF from memory. Warning only: the copy is optional infrastructure.
+# Commit age alone proves neither staleness (the author may simply not have
+# published) nor freshness (a copy can be days behind a recent tip), so age is
+# reported as a hint and lag is measured against the last known server state.
+report_fpf_copy_state() {
+    local fpf="$IWE_ROOT/FPF" commit_ts now_ts age_days behind
+
+    echo "### Состояние копии FPF"
+    echo ""
+    # .git is a file, not a directory, in a linked worktree or a submodule.
+    if [ ! -e "$fpf/.git" ]; then
+        echo "⚠️ Копия \`FPF/\` не найдена — скилл \`/fpf\` не сможет читать полный текст. Решение: \`bash update.sh\` или клонировать ailev/FPF в \`FPF/\`."
+        UPD_WARN=$((UPD_WARN + 1))
+        echo ""
+        return 0
+    fi
+    if [ -f "$fpf/USING-FPF.md" ]; then
+        echo "✅ \`FPF/USING-FPF.md\` (инструкция автора) на месте"
+    else
+        echo "⚠️ В копии FPF нет \`USING-FPF.md\` — копия старее инструкции автора. Решение: \`bash update.sh\` (обновит копию) или \`git -C FPF pull --ff-only\`, если в копии нет своих правок."
+        UPD_WARN=$((UPD_WARN + 1))
+    fi
+    behind=$(git -C "$fpf" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo "")
+    if [ -n "$behind" ] && [ "$behind" -gt 0 ]; then
+        echo "⚠️ Копия FPF отстаёт от известного состояния сервера на $behind коммит(ов) (по данным последнего получения обновлений). Решение: \`bash update.sh\`."
+        UPD_WARN=$((UPD_WARN + 1))
+    fi
+    commit_ts=$(git -C "$fpf" log -1 --format=%ct 2>/dev/null || echo 0)
+    now_ts=$(date +%s)
+    if [ "${commit_ts:-0}" -le 0 ]; then
+        echo "⚠️ Не удалось прочитать дату последнего коммита копии FPF."
+        UPD_WARN=$((UPD_WARN + 1))
+    else
+        age_days=$(( (now_ts - commit_ts) / 86400 ))
+        [ "$age_days" -lt 0 ] && age_days=0
+        if [ "$age_days" -gt 30 ]; then
+            echo "⚠️ Последний коммит копии FPF старше 30 дней ($age_days дн.) — возможно, копия устарела (или автор давно ничего не публиковал). Решение: \`bash update.sh\`."
+            UPD_WARN=$((UPD_WARN + 1))
+        elif [ -z "$behind" ] || [ "$behind" -eq 0 ]; then
+            echo "✅ Копия FPF свежая (последний коммит $age_days дн. назад)"
+        fi
+    fi
+    echo ""
+}
+
+report_fpf_copy_state
+
 if [ $UPD_FAIL -gt 0 ]; then
     echo "**Вердикт раздела:** ❌ $UPD_FAIL критичных предусловия не выполнены — \`update.sh\` упадёт без них."
 elif [ $UPD_WARN -gt 0 ]; then
@@ -811,7 +867,7 @@ echo ""
 # root-owned объекты — последующий pull под обычным юзером падает с
 # "insufficient permission for adding an object to repository database".
 #
-# Источник: 11→12 мая 2026, dirty pull-repos warnings на tsekh-1 — корень оказался
+# Источник: 11→12 мая 2026, dirty pull-repos warnings на удалённом сервере пилота — корень оказался
 # в root-owned .git/objects после ssh-as-root команд из mac.
 #
 # Релевантно для Linux (где ssh может ходить под разными user). На macOS обычно
@@ -853,6 +909,63 @@ else
     else
         echo "✅ Все репо имеют корректного владельца .git/."
     fi
+fi
+echo ""
+
+# ---------- 8. Capabilities (WP-7 F267 stage 1) ----------
+#
+# Reads what scripts/iwe-capabilities.sh recorded; it checks nothing itself, so the
+# audit and the scripts can never disagree about the same fact. Written at install
+# and update, or by hand: bash scripts/iwe-capabilities.sh probe.
+
+echo "## 8. Возможности установки"
+echo ""
+
+# shellcheck source=lib/iwe-capabilities.sh
+source "$SCRIPT_DIR/lib/iwe-capabilities.sh"
+if [ "$(cap_status os)" = "unknown" ]; then
+    echo "_Возможности ещё не определены. Определить: \`bash scripts/iwe-capabilities.sh probe\` (то же делают установка и обновление)._"
+else
+    echo "| Возможность | Состояние | Значение | Проверено |"
+    echo "|---|---|---|---|"
+    for cap_name in $CAP_NAMES; do
+        printf '| %s | %s | %s | %s |\n' "$cap_name" "$(cap_status "$cap_name")" \
+            "$(cap_field "$cap_name" value 2>/dev/null || true)" "$(cap_field "$cap_name" checked_at 2>/dev/null || true)"
+    done
+    echo ""
+    case "$(cap_status backup)" in
+        undecided)
+            # A yellow line, not a counted warning: "undecided" must not turn the audit's
+            # exit code into an alarm for every install that never chose a backup.
+            echo "⚠️ Бэкап не решён: в \`params.yaml\` нет \`backup_dir\`, а iCloud по умолчанию есть только на macOS. Это не влияет на код выхода аудита. Включить: задайте \`backup_dir\`; отказаться явно: \`backup_enabled: false\`."
+            ;;
+        configured)
+            echo "✅ Бэкап настроен: цель — \`${IWE_ICLOUD_BACKUP_DIR:-}\`."
+            ;;
+        off)
+            echo "ℹ️ Бэкап выключен явно (\`backup_enabled: false\`)."
+            ;;
+    esac
+    # Stage 2: the engine of the backup contract and what disappeared. Yellow lines only:
+    # they never change the audit's exit code.
+    case "$(cap_backup_engine)" in
+        invalid)
+            echo "⚠️ Недопустимое значение \`backup_engine\` в \`params.yaml\`: допустимо \`tar\` (по умолчанию) или \`restic\`. Бэкап не запустится, пока значение не исправлено. Это не влияет на код выхода аудита."
+            ;;
+        restic)
+            echo "ℹ️ Движок бэкапа: restic (защитное хранилище \`~/.iwe-backup/protect-repo\`)."
+            if [ -n "$(cap_backup_dir_param)" ]; then
+                echo "ℹ️ \`backup_dir\` относится к архивам tar и для restic не используется: снимки пишутся в защитное хранилище, не в \`backup_dir\`."
+            fi
+            ;;
+        tar)
+            [ "$(cap_status backup)" = configured ] && echo "ℹ️ Движок бэкапа: tar (архивы в \`backup_dir\` или в iCloud на macOS)."
+            ;;
+    esac
+    cap_regressions | while read -r reg_name reg_was reg_status; do
+        [ -n "$reg_name" ] || continue
+        echo "⚠️ Пропала возможность \`$reg_name\` (была: $reg_was, сейчас: $reg_status). Это не влияет на код выхода аудита."
+    done
 fi
 echo ""
 

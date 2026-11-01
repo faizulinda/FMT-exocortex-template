@@ -137,6 +137,14 @@ chmod +x "$SNIPPET"
 # to avoid the generator's own "SKILLS_DIR not found" exit(1) keeps both
 # reads and writes inside $TEST_ROOT.
 FAKE_HOME="$TEST_ROOT/home"
+# issue #890 (WP-7 Ф164): script_path now must resolve to a real file
+# (checked against the generator's own location, template-root-relative
+# per #634 -- an isolated sandbox HOME cannot satisfy a relative one).
+# Give the fixture skill a real, absolute dummy script instead.
+SMOKE_FIXTURE_SCRIPT="$FAKE_HOME/IWE/smoke-fixture-dummy.sh"
+mkdir -p "$(dirname "$SMOKE_FIXTURE_SCRIPT")"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$SMOKE_FIXTURE_SCRIPT"
+chmod +x "$SMOKE_FIXTURE_SCRIPT"
 mkdir -p "$FAKE_HOME/IWE/.claude/skills/smoke-fixture"
 cat > "$FAKE_HOME/IWE/.claude/skills/smoke-fixture/SKILL.md" <<'SKILLEOF'
 ---
@@ -144,11 +152,12 @@ name: smoke-fixture
 description: minimal fixture skill for test_issue_463_setup_reuses_resolved_python3.sh
 routing:
   executor: script
-  script_path: scripts/smoke-fixture.sh
+  script_path: __SMOKE_FIXTURE_SCRIPT_PLACEHOLDER__
   deterministic: true
 ---
 Fixture only — not a real skill.
 SKILLEOF
+sed -i "s#__SMOKE_FIXTURE_SCRIPT_PLACEHOLDER__#$SMOKE_FIXTURE_SCRIPT#" "$FAKE_HOME/IWE/.claude/skills/smoke-fixture/SKILL.md"
 
 # PATH puts the no-yaml stub first for BOTH the resolver call inside the
 # snippet and any bare `python3` the snippet might call — this is the actual
@@ -238,6 +247,7 @@ description: Script plus judgment fixture.
 routing:
   executor: script+judgment
   deterministic: false
+  model_step: judge the script findings
 ---
 EOF
 cat > "$CUSTOM_SKILLS/skip-explicit/SKILL.md" <<'EOF'
@@ -442,13 +452,14 @@ cp -R "$FAKE_HOME/IWE/.claude/skills/smoke-fixture" "$UPDATE_WORKSPACE/.claude/s
 
 UPDATE_FUNCTIONS="$TEST_ROOT/update-backfill-functions.sh"
 awk '
+  /^hash_file\(\)/ { capture=1 }
+  /^# === Detect directories ===/ { capture=0 }
   /^effective_governance_repo\(\)/ { capture=1 }
   /^record_rule_workspace_state\(\)/ { exit }
   capture { print }
 ' "$ROOT/update.sh" > "$UPDATE_FUNCTIONS"
 if ! grep -q '^backfill_executor_catalog()' "$UPDATE_FUNCTIONS" \
-    || ! grep -q '^backfill_derived_snapshot_updater()' "$UPDATE_FUNCTIONS" \
-    || ! grep -q '^backfill_executor_catalog_generator()' "$UPDATE_FUNCTIONS"; then
+    || ! grep -q '^apply_governance_script_policy()' "$UPDATE_FUNCTIONS"; then
     fail "could not extract update backfill functions"
 fi
 
@@ -462,8 +473,8 @@ UPDATE_SNIPPET="$TEST_ROOT/update-catalog-snippet.sh"
     echo "unset IWE_GOVERNANCE_REPO"
     cat "$UPDATE_FUNCTIONS"
     echo 'EFFECTIVE_GOVERNANCE_REPO=$(effective_governance_repo)'
-    echo "backfill_derived_snapshot_updater"
-    echo "backfill_executor_catalog_generator"
+    echo "apply_governance_script_policy scripts/update-derived-snapshot.py"
+    echo "apply_governance_script_policy scripts/generate-executor-catalog.py"
     echo "backfill_executor_catalog"
 } > "$UPDATE_SNIPPET"
 chmod +x "$UPDATE_SNIPPET"
@@ -471,7 +482,17 @@ chmod +x "$UPDATE_SNIPPET"
 git -C "$UPDATE_GOVERNANCE" init -q
 git -C "$UPDATE_GOVERNANCE" config user.name "Issue 508 update test"
 git -C "$UPDATE_GOVERNANCE" config user.email "issue-508@example.invalid"
-printf '#!/usr/bin/env python3\nSNAPSHOT_PATH = "${IWE_GOVERNANCE_REPO:-DS-strategy}"\n' \
+# WP-485 F17: the replaced git-dirty-state guard didn't care about file
+# content, so any synthetic placeholder here used to exercise the "replace
+# it" path. The new policy classifies by content against this repo's own
+# seed-path git history (classify-workspace-copy.sh) -- a placeholder that
+# was never a real release classifies as "unknown, keep it" instead, which
+# is correct new behaviour but defeats this specific fixture's intent. Use
+# an actual historical seed release (4f34412b, confirmed via git log -S not
+# to carry the unrelated bash-vs-python literal-string bug an even earlier
+# commit on this path has) so the fixture again represents what it is meant
+# to: an old-but-real release that should upgrade to current seed bytes.
+git -C "$ROOT" show 4f34412b:seed/strategy/scripts/update-derived-snapshot.py \
     > "$UPDATE_GOVERNANCE/scripts/update-derived-snapshot.py"
 chmod +x "$UPDATE_GOVERNANCE/scripts/update-derived-snapshot.py"
 git -C "$UPDATE_GOVERNANCE" add -- scripts/update-derived-snapshot.py

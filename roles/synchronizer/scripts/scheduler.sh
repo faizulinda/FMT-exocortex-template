@@ -25,13 +25,6 @@ elif command -v systemd-inhibit &>/dev/null; then
     trap 'kill $_INHIBIT_PID 2>/dev/null' EXIT
 fi
 
-# Cross-platform date offset: portable_date_offset <days_back> <format>
-portable_date_offset() {
-    local days="$1"
-    local fmt="${2:-%Y-%m-%d}"
-    date -v-${days}d +"$fmt" 2>/dev/null || date -d "$days days ago" +"$fmt" 2>/dev/null
-}
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SYNC_DIR="$(dirname "$SCRIPT_DIR")"
 STATE_DIR="$HOME/.local/state/exocortex"
@@ -98,14 +91,24 @@ if ! command -v timeout &>/dev/null; then
             use POSIX ":sys_wait_h";
             my $timeout = shift @ARGV;
             my $pid = fork();
-            if ($pid == 0) { exec @ARGV; die "exec failed: $!"; }
+            defined($pid) or die "fork failed: $!";
+            if ($pid == 0) {
+                POSIX::setpgid(0, 0) == 0 or die "setpgid failed: $!";
+                exec @ARGV; die "exec failed: $!";
+            }
             eval {
                 local $SIG{ALRM} = sub { die "alarm" };
                 alarm($timeout);
                 waitpid($pid, 0);
                 alarm(0);
             };
-            if ($@ =~ /alarm/) { kill("TERM", $pid); sleep(1); kill("KILL", $pid); waitpid($pid, WNOHANG); exit(124); }
+            if ($@ =~ /alarm/) {
+                kill("TERM", -$pid);
+                sleep(1);
+                kill("KILL", -$pid);
+                waitpid($pid, WNOHANG);
+                exit(124);
+            }
             exit($? >> 8);
         ' "$duration" "$@"
     }
@@ -130,6 +133,22 @@ run_strategist_scenario() {
         2)
             log "SKIP: strategist $scenario already running (lock held; will retry next dispatch)"
             ;;
+        75)
+            log "ALARM: strategist $scenario deferred: template update incomplete (rc=75; finish or repair update.sh; will retry next dispatch)"
+            if [ "$scenario" = morning ]; then
+                notify_incomplete_morning_update || true
+            fi
+            ;;
+        76)
+            log "ALARM: strategist $scenario exhausted today's automatic attempts (rc=76; manual retry remains available)"
+            ;;
+        77)
+            if [ "$scenario" = week-review ] && week_review_exhausted_today; then
+                log "ALARM: strategist week-review automatic retry paused (rc=77; delivery outcome uncertain or attempts exhausted; inspect status before manual retry)"
+            else
+                log "WARN: strategist $scenario failed (rc=77; next dispatch will recheck status)"
+            fi
+            ;;
         *)
             log "WARN: strategist $scenario failed (rc=$rc; will retry next dispatch)"
             ;;
@@ -147,8 +166,60 @@ ran_this_week() {
     [ -f "$STATE_DIR/$1-W$WEEK" ]
 }
 
+# #1067: use the strategist's published status record, never its mixed log:
+# model stdout in that log can contain forged GAVE UP/RECORDED markers. UNKNOWN
+# means a run may have delivered before its final status write failed; pause.
+week_review_exhausted_today() {
+    local status_file="$HOME/logs/strategist/week-review-last-status"
+    local stamped_at outcome rc failed_runs extra
+    [ -f "$status_file" ] && [ ! -L "$status_file" ] || return 1
+    IFS=$'\t' read -r stamped_at outcome rc failed_runs extra < "$status_file" || return 1
+    [ -z "$extra" ] && [ "${stamped_at%% *}" = "$DATE" ] &&
+        { { [ "$outcome" = FAILED ] && [[ "$rc" =~ ^[0-9]+$ ]] &&
+            { [ "$failed_runs" = 2 ] || [ -z "$failed_runs" ]; }; } ||
+          { [ "$outcome" = UNKNOWN ] && [ "$rc" = 77 ] &&
+            { [ "$failed_runs" = 1 ] || [ "$failed_runs" = 2 ]; }; }; }
+}
+
+# A manual retry can succeed after the cap. The next scheduler dispatch then
+# observes its dated success status and records the weekly postcondition.
+week_review_recovered_today() {
+    local status_file="$HOME/logs/strategist/week-review-last-status"
+    local stamped_at outcome rc failed_runs extra
+    [ -f "$status_file" ] && [ ! -L "$status_file" ] || return 1
+    IFS=$'\t' read -r stamped_at outcome rc failed_runs extra < "$status_file" || return 1
+    [ -z "$extra" ] && [ "${stamped_at%% *}" = "$DATE" ] &&
+        [ "$outcome" = SUCCESS ] && [ "$rc" = 0 ] && [ "$failed_runs" = 0 ]
+}
+
 mark_done() {
     echo "$(date '+%H:%M:%S')" > "$STATE_DIR/$1-$DATE"
+}
+
+# The strategist exits 75 before its own notifier is available. Use the existing
+# day-open-failed path here; a failed send (which notify.sh may report with exit 0)
+# must not consume the one-per-day notice or the morning retry.
+notify_incomplete_morning_update() {
+    local notice="strategist-morning-update-alert" output="" notify_rc=0
+    ran_today "$notice" && return 0
+    if [ ! -f "$NOTIFY_SH" ]; then
+        log "WARN: Day Open update-incomplete notification unavailable; will retry next dispatch"
+        return 1
+    fi
+    # Bound the whole notifier below TASK_TIMEOUT_SHORT (300s). The macOS
+    # fallback kills its process group, including children that inherited the
+    # command substitution's stdout; notify.sh also bounds curl itself.
+    output=$(DAY_OPEN_FAILED_REASON=update-incomplete DAY_OPEN_FAILED_RC=75 \
+        timeout 15 "$NOTIFY_SH" strategist day-open-failed 2>&1) || notify_rc=$?
+    if [ "$notify_rc" -eq 0 ] && printf '%s\n' "$output" | grep -qxF \
+        'Telegram notification sent: strategist/day-open-failed'; then
+        if mark_done "$notice"; then
+            log "Day Open update-incomplete notification delivered"
+            return 0
+        fi
+    fi
+    log "WARN: Day Open update-incomplete notification not confirmed (notifier rc=$notify_rc); will retry next dispatch"
+    return 1
 }
 
 mark_done_week() {
@@ -168,6 +239,82 @@ last_run_seconds_ago() {
 
 mark_interval() {
     echo "$NOW" > "$STATE_DIR/$1-last"
+}
+
+# "Every N hours" tasks are gated on the time since the previous dispatch START
+# (mark_interval stores NOW), and the timer fires every N hours too. A dispatch may
+# start a few seconds earlier than the previous one did: 15:00:52 -> 18:00:51 is
+# 10799 s < 10800 and the extractor lost a whole interval (a pilot's remote host, 21.09.2026).
+# The slack absorbs that jitter; it is far below any interval, so a manual dispatch
+# still holds the next timer tick off.
+INTERVAL_SLACK_SECONDS=300
+
+# interval_reached ELAPSED_SECONDS INTERVAL_SECONDS
+interval_reached() {
+    [ "$1" -ge $(( $2 - INTERVAL_SLACK_SECONDS )) ]
+}
+
+# === Бэкап и возможности установки (WP-7 Ф267, этап 2) ===
+
+# Platform scripts live outside the role directory: IWE_SCRIPTS comes from the scheduler
+# unit (launchd plist / systemd service); the template checkout is the fallback.
+PLATFORM_SCRIPTS="${IWE_SCRIPTS:-${IWE_TEMPLATE:-$HOME/IWE/FMT-exocortex-template}/scripts}"
+
+# Daily backup through the one entry point (scripts/iwe-backup.sh picks the engine from
+# the backup contract in params.yaml). The ATTEMPT is stamped first, so a hang or a
+# failure is retried after the interval and never every 10 minutes. The daily "done"
+# marker is set only when the entry point reported success (a confirmed snapshot) or
+# had nothing to do (switched off / undecided); an invalid contract is also marked done
+# so it does not retry all day - the warning is in the log and in audit section 8.
+run_backup_task() {
+    local rc=0
+    mark_interval "synchronizer-backup"
+    # A missing entry point means the template update did not finish: that is not a failed
+    # backup, so it must not look like one. The DayPlan scheduler row reads this log:
+    # WARN:/ALARM: lines make it red and SKIP: lines make it "deferred", so this is a plain line.
+    if [ ! -f "$PLATFORM_SCRIPTS/iwe-backup.sh" ]; then
+        log "backup: iwe-backup.sh is not in $PLATFORM_SCRIPTS (template update incomplete), nothing to run; next try after the 3h interval"
+        return 0
+    fi
+    timeout "$TASK_TIMEOUT_LONG" bash "$PLATFORM_SCRIPTS/iwe-backup.sh" >> "$LOG_FILE" 2>&1 || rc=$?
+    case "$rc" in
+        0)
+            mark_done "synchronizer-backup"
+            log "backup: finished (a confirmed snapshot, or switched off / undecided - see the output above)"
+            ;;
+        2)
+            mark_done "synchronizer-backup"
+            log "WARN: backup contract is invalid (rc=2): fix backup_engine in params.yaml; no retry today"
+            ;;
+        124)
+            # A timed-out run holds the shared dispatch lock for the whole limit; repeating it
+            # every 3 hours would block the other roles again and again. Not retried today.
+            mark_done "synchronizer-backup"
+            log "WARN: backup timed out after ${TASK_TIMEOUT_LONG}s; no retry today (check the size of the IWE directory)"
+            ;;
+        *)
+            log "WARN: backup failed (rc=$rc; next try after the 3h interval)"
+            ;;
+    esac
+}
+
+# Once a day: did something that worked disappear? One Telegram message per regression,
+# repeated only after the thing came back and went away again. A failed delivery leaves
+# the regression pending and the check is retried after the 3h interval, not on every
+# dispatch (a broken token would otherwise cost a network call every 10 minutes).
+run_capability_regress_task() {
+    local rc=0
+    mark_interval "synchronizer-cap-regress"
+    if [ ! -f "$PLATFORM_SCRIPTS/iwe-capabilities.sh" ]; then
+        log "capability regress check: iwe-capabilities.sh is not in $PLATFORM_SCRIPTS (template update incomplete), nothing to run; next try after the 3h interval"
+        return 0
+    fi
+    timeout "$TASK_TIMEOUT_SHORT" bash "$PLATFORM_SCRIPTS/iwe-capabilities.sh" regress --notify >> "$LOG_FILE" 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        mark_done "synchronizer-cap-regress"
+    else
+        log "WARN: capability regress check did not finish (rc=$rc; will retry next dispatch)"
+    fi
 }
 
 # === Очистка старых маркеров (>7 дней) ===
@@ -211,9 +358,16 @@ dispatch() {
 
     # --- Стратег: week-review (Пн, до morning) ---
     if [ "$DOW" = "1" ] && ! ran_this_week "strategist-week-review"; then
-        log "→ strategist week-review (catch-up: hour=$HOUR)"
-        if run_strategist_scenario "week-review"; then
+        if week_review_recovered_today; then
             mark_done_week "strategist-week-review"
+            log "week-review manual recovery confirmed; weekly marker recorded"
+        elif week_review_exhausted_today; then
+            log "SKIP: strategist week-review automatic retry paused (attempts exhausted or delivery outcome uncertain); inspect status before manual retry"
+        else
+            log "→ strategist week-review (catch-up: hour=$HOUR)"
+            if run_strategist_scenario "week-review"; then
+                mark_done_week "strategist-week-review"
+            fi
         fi
         ran=1
     fi
@@ -227,24 +381,13 @@ dispatch() {
         ran=1
     fi
 
-    # --- Стратег: note-review (22:00+) ---
-    if (( 10#$HOUR >= 22 )) && ! ran_today "strategist-note-review"; then
-        log "→ strategist note-review (catch-up: hour=$HOUR)"
-        if run_strategist_scenario "note-review"; then
-            mark_done "strategist-note-review"
-        fi
-        ran=1
-    elif (( 10#$HOUR < 12 )); then
-        local yesterday
-        yesterday=$(portable_date_offset 1)
-        if [ -n "$yesterday" ] && [ ! -f "$STATE_DIR/strategist-note-review-$yesterday" ]; then
-            log "→ strategist note-review (catch-up for yesterday $yesterday)"
-            if run_strategist_scenario "note-review"; then
-                echo "$(date '+%H:%M:%S') catch-up" > "$STATE_DIR/strategist-note-review-$yesterday"
-            fi
-            ran=1
-        fi
-    fi
+    # --- Стратег: note-review — no scheduled runs (template owner's decision, July 2026) ---
+    # Notes are reviewed ONLY by hand, in a live session with the pilot (e.g. the Day Open
+    # "Разбор заметок" section). The nightly run kept stripping bold and archiving notes without
+    # a pilot decision, so BOTH scheduler paths are gone: the evening run (22:00+) and the
+    # morning catch-up for "yesterday". A manual `strategist.sh note-review` from a terminal
+    # still works, but it has no chat: it only marks notes and writes proposals, the model archives
+    # nothing (only the cleanup safety net may archive a note whose bold the pilot already removed).
 
     # --- Синхронизатор: code-scan (ежедневно) ---
     if ! ran_today "synchronizer-code-scan"; then
@@ -291,13 +434,37 @@ dispatch() {
     if (( 10#$HOUR >= 7 && 10#$HOUR <= 23 )); then
         local elapsed
         elapsed=$(last_run_seconds_ago "extractor-inbox-check")
-        if [ "$elapsed" -ge 10800 ]; then
+        if interval_reached "$elapsed" 10800; then
             log "→ extractor inbox-check (${elapsed}s since last)"
-            if timeout "$TASK_TIMEOUT_LONG" "$EXTRACTOR_SH" inbox-check >> "$LOG_FILE" 2>&1; then
-                mark_interval "extractor-inbox-check"
-            else
-                log "WARN: extractor inbox-check failed (will retry next dispatch)"
+            # A failed run is stamped too: every run is a full AI pass, so retrying on
+            # each 10-min dispatch turned one persistent post-AI failure into an
+            # unbounded loop burning the subscription (issue #1348).
+            mark_interval "extractor-inbox-check"
+            if ! timeout "$TASK_TIMEOUT_LONG" "$EXTRACTOR_SH" inbox-check >> "$LOG_FILE" 2>&1; then
+                log "WARN: extractor inbox-check failed (next try after the 3h interval)"
             fi
+            ran=1
+        fi
+    fi
+
+    # --- Бэкап: раз в сутки, не раньше 06:00; повтор после сбоя не чаще раза в 3 часа ---
+    if (( 10#$HOUR >= 6 )) && ! ran_today "synchronizer-backup"; then
+        local backup_elapsed
+        backup_elapsed=$(last_run_seconds_ago "synchronizer-backup")
+        if interval_reached "$backup_elapsed" 10800; then
+            log "→ backup (${backup_elapsed}s since the last attempt)"
+            run_backup_task
+            ran=1
+        fi
+    fi
+
+    # --- Возможности установки: проверка регресса, раз в сутки (после бэкапа) ---
+    if ! ran_today "synchronizer-cap-regress"; then
+        local regress_elapsed
+        regress_elapsed=$(last_run_seconds_ago "synchronizer-cap-regress")
+        if interval_reached "$regress_elapsed" 10800; then
+            log "→ capability regress check (${regress_elapsed}s since the last attempt)"
+            run_capability_regress_task
             ran=1
         fi
     fi

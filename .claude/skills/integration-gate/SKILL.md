@@ -16,6 +16,9 @@ triggers:
     - "integration gate"
     - "IntegrationGate"
 related: [archgate]
+routing:
+  executor: sonnet
+  deterministic: false
 ---
 
 # /integration-gate — IntegrationGate
@@ -25,7 +28,7 @@ related: [archgate]
 
 ## Чеклист (4 шага — строго по порядку)
 
-> Пропуск фазы → зафиксировать как инцидент: `DS-ecosystem-development/.../C2.3.Operations/Incidents/`
+> Пропуск фазы → зафиксировать как инцидент: `C2.3.Operations/Incidents/` своего ecosystem-development репозитория (если есть) или `incidents/` governance-репо
 
 1. **Обещание (Service Clause).** Какое обещание инструмент даёт потребителю?  
    Создать/обновить `DP.SC.NNN` в `PACK-digital-platform/.../08-service-clauses/`.  

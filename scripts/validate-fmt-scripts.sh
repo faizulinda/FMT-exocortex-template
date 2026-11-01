@@ -50,6 +50,12 @@ fi
 FMT_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
 AUTHOR_HOME="${HOME}"
 AUTHOR_GOV_REPO="${IWE_GOVERNANCE_REPO:-DS-strategy}"
+# issue #1278: for a user whose $HOME is a short, common path segment ("/root"),
+# a bare substring match fires on any unrelated word containing it, e.g. the
+# comment "workspace/root paths" in iwe-env-bootstrap.sh. Require a path-like
+# boundary on both sides (not alnum/"_") so "/root" still matches as a real
+# path ("/root/foo", "//root") but not inside a longer word ("workspace/root").
+AUTHOR_HOME_ESCAPED="$(printf '%s' "$AUTHOR_HOME" | sed 's/[][(){}.^$*+?|\\]/\\&/g')"
 
 errors=0
 checked=0
@@ -69,9 +75,9 @@ if [[ "$MODE" != "settings-json" ]]; then
         checked=$((checked + 1))
 
         # Проверка 1: абсолютный личный путь (resolved $HOME, не переменная)
-        if grep -qF "$AUTHOR_HOME" "$f" 2>/dev/null; then
+        if grep -qE "(^|[^[:alnum:]_])${AUTHOR_HOME_ESCAPED}(/|[^[:alnum:]_]|\$)" "$f" 2>/dev/null; then
             echo "  ❌ $fname: содержит '$AUTHOR_HOME'" >&2
-            grep -nF "$AUTHOR_HOME" "$f" | head -3 | sed 's/^/     /' >&2
+            grep -nE "(^|[^[:alnum:]_])${AUTHOR_HOME_ESCAPED}(/|[^[:alnum:]_]|\$)" "$f" | head -3 | sed 's/^/     /' >&2
             errors=$((errors + 1))
         fi
 
@@ -80,6 +86,8 @@ if [[ "$MODE" != "settings-json" ]]; then
         #   - ${IWE_GOVERNANCE_REPO:-DS-strategy}  (bash default)
         #   - ${IWE_GOVERNANCE_REPO:?...}          (bash required)
         #   - os.environ.get("GOVERNANCE_REPO", "DS-strategy")  (python fallback)
+        #   - os.environ.get("IWE_GOVERNANCE_REPO") or "DS-strategy"
+        #     (python fallback for unset AND empty values, issue #1038)
         #   - GOV_REPO_TMPL="DS-strategy"          (template identity literal)
         #   - VAR="DS-strategy" \                  (env override в команде, line cont)
         #   - cmd || echo "DS-strategy"            (bare fallback после ||, issue #275)
@@ -134,6 +142,12 @@ if [[ "$MODE" != "settings-json" ]]; then
                     line_content="${bl#*:}"
                     occurrences=$(grep -o "$AUTHOR_GOV_REPO" <<<"$line_content" | wc -l | tr -d ' ')
                     if [[ "$occurrences" -eq 1 ]]; then
+                        # Python's `or` matches shell `${VAR:-default}` for both
+                        # an unset and an empty variable. Require one literal on
+                        # the line so an unrelated hardcode cannot hide next to it.
+                        if echo "$bl" | grep -qE "os\\.environ\\.get\\([\"']IWE_GOVERNANCE_REPO[\"']\\)[[:space:]]+or[[:space:]]+[\"']${AUTHOR_GOV_REPO}[\"']"; then
+                            continue
+                        fi
                         if echo "$bl" | grep -qE "\\|\\|[[:space:]]*echo[[:space:]]+\"$AUTHOR_GOV_REPO\"[[:space:]]*\\)?[[:space:]]*\$"; then
                             continue
                         fi
@@ -190,6 +204,27 @@ if [[ "$MODE" != "settings-json" ]]; then
                                 steps=$((steps + 1))
                             done
                             if [ "$found_override_key" -eq 1 ]; then
+                                continue
+                            fi
+                        fi
+                        # issue #1135: the literal's only occurrence sits inside a
+                        # trailing comment that explains why the code earlier on
+                        # the line already covers it (e.g. a shellcheck directive
+                        # reference, another issue number, or a WP- id) — same
+                        # "comments don't affect behavior" contract as the
+                        # whole-line-comment skip above. Two conditions, both
+                        # required: (a) the literal must actually disappear once
+                        # we cut from the first whitespace-preceded `#` onward —
+                        # a hardcode sitting BEFORE that `#`, with an unrelated
+                        # marker word further in the same trailing comment, must
+                        # still be caught; (b) what remains of the comment must
+                        # carry one of the markers actually seen in practice —
+                        # staying a narrow whitelist, not "any trailing comment",
+                        # since a general comment/quote-aware parser is not
+                        # reliable here (a `#` can legitimately sit inside a
+                        # quoted string too).
+                        if ! echo "$bl" | sed -E 's/[[:space:]]#.*$//' | grep -q "$AUTHOR_GOV_REPO"; then
+                            if echo "$bl" | grep -qE '[[:space:]]#.*\b(shellcheck|WP-[0-9]+|issue[[:space:]]*#[0-9]+)\b'; then
                                 continue
                             fi
                         fi

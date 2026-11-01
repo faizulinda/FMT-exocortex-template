@@ -1,7 +1,7 @@
 #!/bin/bash
 # pull-on-touch.sh — PreToolUse hook: ленивая подтяжка git-репо при первом касании за сессию.
 #
-# Реализует правило Pull-on-Touch (CLAUDE.md §2 п.5) детерминированно, а не "по памяти агента".
+# Реализует правило Pull-on-Touch (CLAUDE.md §2 п.4) детерминированно, а не "по памяти агента".
 # Причина: правило поведенческое → системно пропускается (инцидент 5 мая 2026 и 14 июня 2026 —
 # ложный диагноз "Day Open пропущен" из-за чтения устаревшей локальной копии).
 #
@@ -9,15 +9,20 @@
 #   Триггер: первое за сессию касание пути под ~/IWE/<repo> любым из инструментов
 #            Read | Write | Edit | MultiEdit | NotebookEdit | Bash.
 #   Вход:    stdin JSON {tool_name, tool_input, session_id}.
-#   Действие: git -C <repo> pull --rebase — один раз на репо на сессию.
-#   Отказы:  НИКОГДА не блокирует (exit 0 всегда). Грязное дерево / сетевой сбой / конфликт rebase
-#            → pull пропущен, в additionalContext пометка "данные potentially stale".
+#   Действие: классификация read-only (scripts/lib/git-sync-status.sh, ls-remote,
+#             никогда не трогает stash/rebase/refs) + на заведомо чистом дереве —
+#             `git merge --ff-only --no-autostash` — один раз на репо на сессию.
+#             НИКОГДА не делает autostash: issue #1245 (16.10.2026, рецидив
+#             bug-2026-07-17) — конфликт при возврате стеша тихо топил несохранённые
+#             правки, предупреждение было видно только в additionalContext одной сессии.
+#   Отказы:  НИКОГДА не блокирует (exit 0 всегда). Грязное дерево / сетевой сбой / история
+#            разошлась → подтяжка пропущена, в additionalContext пометка "данные potentially stale".
 #   Состояние: ~/.claude/state/repo-pulled-<session>.txt (одно имя репо на строку).
 
 set -uo pipefail
 
 [[ "${1:-}" == "--help" ]] && {
-    echo "pull-on-touch.sh — lazy 'git pull --rebase' on first repo touch per session (CLAUDE.md §2 п.5)"
+    echo "pull-on-touch.sh — lazy read-only freshness check + safe ff-only fast-forward on first repo touch per session (CLAUDE.md §2 п.4)"
     exit 0
 }
 
@@ -60,6 +65,10 @@ print("\n".join(out))
 TO=""
 command -v timeout >/dev/null 2>&1 && TO="timeout 20"
 
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../scripts/lib/git-sync-status.sh
+. "$HOOK_DIR/../../scripts/lib/git-sync-status.sh"
+
 warns=""
 pulled=""
 while IFS= read -r repo; do
@@ -68,23 +77,59 @@ while IFS= read -r repo; do
     echo "$repo" >> "$STATE_FILE"                  # пометить ДО pull (lazy: одна попытка на сессию)
 
     dir="$IWE_ROOT/$repo"
+    branch=$(git -C "$dir" symbolic-ref --quiet --short HEAD 2>/dev/null)
 
-    # autostash тянет даже на грязном дереве (прячет правки → rebase → возвращает),
-    # поэтому пропуска-на-грязном нет. Считаем стэши до/после, чтобы поймать
-    # незавершённый возврат при конфликте и НЕ потерять локальную работу молча.
-    stash_before=$(git -C "$dir" stash list 2>/dev/null | wc -l | tr -d ' ')
-
-    if out=$($TO git -C "$dir" pull --rebase --autostash --quiet 2>&1); then
-        [ -n "$out" ] && pulled="${pulled}${repo} "
-    else
-        git -C "$dir" rebase --abort >/dev/null 2>&1 || true   # вернуть репо в исходное состояние
-        warns="${warns}${repo}: подтяжка не удалась (сеть/конфликт), данные potentially stale. "
+    # Больше никогда не стешит (issue #1245, рецидив bug-2026-07-17): autostash
+    # мог конфликтовать на возврате и тихо топить несохранённые правки — в stash,
+    # с предупреждением, видимым только в additionalContext этого тул-колла.
+    # Include untracked files even when status.showUntrackedFiles=no is set.
+    # A failed status query is not proof of a clean tree. Optional locks are
+    # disabled so inspecting another session's index does not refresh it.
+    if ! tree_status=$(GIT_OPTIONAL_LOCKS=0 git -C "$dir" status --porcelain --untracked-files=all 2>/dev/null); then
+        warns="${warns}${repo}: не удалось проверить несохранённые правки, данные potentially stale. "
+        continue
+    fi
+    if [ -n "$tree_status" ]; then
+        warns="${warns}${repo}: есть несохранённые правки, свежее с origin не подтягиваю (чтобы не рисковать ими), данные potentially stale. "
+        continue
     fi
 
-    stash_after=$(git -C "$dir" stash list 2>/dev/null | wc -l | tr -d ' ')
-    if [ "${stash_after:-0}" -gt "${stash_before:-0}" ]; then
-        warns="${warns}${repo}: локальные правки не вернулись автоматически (конфликт), лежат в git stash — верни вручную (git -C $dir stash pop). "
-    fi
+    initial_head=$(git -C "$dir" rev-parse HEAD 2>/dev/null) || {
+        warns="${warns}${repo}: не удалось определить текущий коммит, данные potentially stale. "
+        continue
+    }
+    check_git_sync_status "$dir" "$branch" 20
+    case "$GIT_SYNC_STATUS" in
+        OK)
+            ;;
+        STALE)
+            # Fetch does not touch working files, but another session can write
+            # while it runs. Recheck the branch, HEAD and tree before merging.
+            if ! $TO git -C "$dir" fetch --quiet --refmap= origin "+refs/heads/$branch:refs/remotes/origin/$branch" 2>/dev/null; then
+                warns="${warns}${repo}: не удалось получить обновление, данные potentially stale. "
+                continue
+            fi
+            if ! target=$(git -C "$dir" rev-parse "refs/remotes/origin/$branch" 2>/dev/null) \
+                || ! tree_status=$(GIT_OPTIONAL_LOCKS=0 git -C "$dir" status --porcelain --untracked-files=all 2>/dev/null) \
+                || [ -n "$tree_status" ] \
+                || [ "$(git -C "$dir" symbolic-ref --quiet --short HEAD 2>/dev/null)" != "$branch" ] \
+                || [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" != "$initial_head" ]; then
+                warns="${warns}${repo}: состояние изменилось или не проверено после fetch, обновление пропущено, данные potentially stale. "
+                continue
+            fi
+            # The final check cannot exclude a later concurrent write. Explicitly
+            # disable config-driven autostash so Git refuses overlapping edits
+            # instead of stashing them and reporting success after a failed pop.
+            if git -C "$dir" merge --ff-only --no-autostash --no-overwrite-ignore --quiet "$target" 2>/dev/null; then
+                pulled="${pulled}${repo} "
+            else
+                warns="${warns}${repo}: подтяжка не удалась (конфликт при обновлении ветки), данные potentially stale. "
+            fi
+            ;;
+        *)
+            warns="${warns}${repo}: подтяжка не удалась ($GIT_SYNC_STATUS), данные potentially stale. "
+            ;;
+    esac
 done <<< "$REPOS"
 
 # Сообщить агенту только если есть что сказать (свежие данные или пометка stale).

@@ -206,6 +206,27 @@ check_command() {
 # Git — обязателен всегда
 check_command "git" "Git" "xcode-select --install"
 
+# Git identity — required in every mode: step 6 makes the initial commit of the
+# governance repo (full and --core). Without an identity that commit dies in the
+# middle of the install with git's own "Author identity unknown", after most of
+# the work is done and before the base repos are cloned; a new machine has none
+# until the user sets it (CI never saw this: its smoke passes GIT_AUTHOR_* env).
+# A throwaway empty commit is the only faithful probe: `git var` and `git config`
+# both answer differently from `git commit` in some environments (auto-detected
+# names, useConfigOnly). A dry run makes no commit, so it only warns.
+if command -v git >/dev/null 2>&1; then
+    _ID_PROBE=$(mktemp -d 2>/dev/null || true)
+    if [ -n "$_ID_PROBE" ] && git -C "$_ID_PROBE" init -q >/dev/null 2>&1 \
+            && git -C "$_ID_PROBE" commit -q --allow-empty -m probe >/dev/null 2>&1; then
+        echo "  ✓ Git identity: задана"
+    else
+        echo "  ✗ Git identity: не задана (имя и почта для коммитов)"
+        echo "    Install: git config --global user.name \"Your Name\" && git config --global user.email \"you@example.com\""
+        $DRY_RUN || PREREQ_FAIL=1
+    fi
+    [ -z "$_ID_PROBE" ] || rm -rf "$_ID_PROBE"
+fi
+
 # jq — обязателен всегда: .claude/hooks/dry-run-gate.sh (устанавливается в любом режиме,
 # см. шаг 4b) fail-closed блокирует ВСЕ tool calls без jq, без явного предупреждения (issue #192).
 check_command "jq" "jq" "brew install jq (Linux: apt install jq / dnf install jq)"
@@ -308,8 +329,75 @@ fi
 HOME_DIR="$HOME"
 USER_NAME="$(id -un)"
 
-# Compute Claude project slug: /Users/alice/IWE → -Users-alice-IWE
-CLAUDE_PROJECT_SLUG="$(echo "$WORKSPACE_DIR" | tr '/' '-')"
+# iwe_claude_project_slug PATH — the directory name Claude Code uses under
+# ~/.claude/projects for PATH: every character that is not an ASCII letter or
+# digit becomes "-" (so "/", ".", "_" and " " all do): /Users/alice/IWE → -Users-alice-IWE.
+# issue #869: three scripts used three different rules ("tr /", "tr /_.",
+# "tr /_ "), and none converted a Git Bash path ("/f/notes") to the native form
+# Claude Code actually sees ("F:\notes"). On Windows the native path comes from
+# cygpath; the drive-letter case does not matter there, the file system is
+# case-insensitive. A non-ASCII character becomes one dash (python3 counts characters
+# whatever the locale - launchd and cron run with none; the sed fallback does the same
+# only under a UTF-8 locale). Not verified against Claude Code for non-ASCII paths.
+# KEEP IN SYNC with update.sh and scripts/day-close.sh — the same function body;
+# scripts/tests/test_issue_869_claude_slug.sh fails when the copies diverge.
+iwe_claude_project_slug() {
+    local path="$1" native=""
+    if command -v cygpath >/dev/null 2>&1; then
+        native=$(cygpath -w "$path" 2>/dev/null) || native=""
+        [ -n "$native" ] && path="$native"
+    fi
+    if command -v python3 >/dev/null 2>&1 \
+       && python3 -c 'import os, re, sys; sys.stdout.write(re.sub("[^A-Za-z0-9]", "-", os.fsencode(sys.argv[1]).decode("utf-8", "replace")))' "$path" 2>/dev/null; then
+        return 0
+    fi
+    printf '%s' "$path" | sed 's/[^A-Za-z0-9]/-/g'
+}
+
+# hash_file FILE — the file's sha256, as update.sh computes it.
+# KEEP IN SYNC with update.sh — the same function body; setup/test-update-edge-cases.sh (T47) fails
+# when the copies diverge.
+hash_file() {
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | cut -d' ' -f1
+    else
+        sha256sum "$1" | cut -d' ' -f1
+    fi
+}
+
+# memory_record_put FILE KEY HASH — the record of installed memory versions
+# ($WORKSPACE_DIR/.memory-deployed.tsv, one "key<TAB>sha256" line per file): afterwards its line for
+# KEY says HASH. update.sh reads it to tell a memory copy nobody changed from an edited one (issues
+# #965/#967). Written through a temporary file and mv; a record that is a link, no regular file or
+# unreadable is left as it is; returns non-zero, without a word, when it does not write.
+# KEEP IN SYNC with update.sh — the same function body; setup/test-update-edge-cases.sh (T47) fails
+# when the copies diverge.
+memory_record_put() {
+    local file="$1" key="$2" hash="$3" tmp line value tab
+    tab=$(printf '\t')
+    case "$hash" in *[!0-9a-f]*|'') return 1 ;; esac
+    [ "${#hash}" -eq 64 ] || return 1
+    if [ -L "$file" ] || { [ -e "$file" ] && { [ ! -f "$file" ] || [ ! -r "$file" ]; }; }; then
+        return 1
+    fi
+    tmp=$(mktemp "$file.XXXXXX" 2>/dev/null) || return 1
+    if [ -f "$file" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in *"$tab"*) ;; *) continue ;; esac
+            value="${line##*"$tab"}"
+            case "$value" in *[!0-9a-f]*|'') continue ;; esac
+            [ "${#value}" -eq 64 ] || continue
+            [ "${line%"$tab"*}" = "$key" ] || printf '%s\n' "$line"
+        done < "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
+    fi
+    if printf '%s\t%s\n' "$key" "$hash" >> "$tmp" && mv -f "$tmp" "$file"; then
+        return 0
+    fi
+    rm -f "$tmp"
+    return 1
+}
+
+CLAUDE_PROJECT_SLUG="$(iwe_claude_project_slug "$WORKSPACE_DIR")"
 
 # === Governance repo contract (WP-560 Ф5-Phase-2) ===
 # Single machine-readable source for the governance repo's default name and
@@ -507,7 +595,10 @@ IWE_RUNTIME="$IWE_RUNTIME_PATH"
 IWE_SCRIPTS="$IWE_TEMPLATE_PATH/scripts"
 
 # === Platform LLM Proxy (optional own API key for unlimited usage) ===
-PLATFORM_LLM_PROXY_URL=https://llm.aisystant.com/v1
+# No default address is written: the platform gateway does not answer yet (older
+# versions recorded an address here that returns HTTP 404 on every path). Fill it in
+# once a real gateway exists; day-open reads LLM_PROXY_URL first, then this value.
+# PLATFORM_LLM_PROXY_URL=
 # ANTHROPIC_API_KEY=  # Optional: own key for unlimited usage (Direct MCP mode)
 
 ENVEOF
@@ -655,9 +746,11 @@ fi
 echo "[3/6] Installing memory..."
 CLAUDE_MEMORY_DIR="$HOME/.claude/projects/$CLAUDE_PROJECT_SLUG/memory"
 if $DRY_RUN; then
-    MEM_COUNT=$(ls "$TEMPLATE_DIR/memory/"*.md 2>/dev/null | wc -l | tr -d ' ')
-    YAML_COUNT=$(ls "$TEMPLATE_DIR/memory/"*.yaml "$TEMPLATE_DIR/memory/"*.yml 2>/dev/null | wc -l | tr -d ' ')
-    echo "  [DRY RUN] Would copy $MEM_COUNT .md + $YAML_COUNT .yaml/.yml memory files → $CLAUDE_MEMORY_DIR/"
+    # Recursive find, not a top-level glob: memory/ has nested paths (memory/reference/agent-core.md)
+    # that a "$TEMPLATE_DIR/memory/"*.md glob never matches (issue #1105).
+    MEM_COUNT=$(find "$TEMPLATE_DIR/memory" -type f -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+    YAML_COUNT=$(find "$TEMPLATE_DIR/memory" -type f \( -name "*.yaml" -o -name "*.yml" \) 2>/dev/null | wc -l | tr -d ' ')
+    echo "  [DRY RUN] Would copy $MEM_COUNT .md + $YAML_COUNT .yaml/.yml memory files (recursively) → $CLAUDE_MEMORY_DIR/"
     if [ ! -e "$WORKSPACE_DIR/memory" ]; then
         echo "  [DRY RUN] Would create symlink: $WORKSPACE_DIR/memory → $CLAUDE_MEMORY_DIR"
     else
@@ -665,17 +758,60 @@ if $DRY_RUN; then
     fi
 else
     mkdir -p "$CLAUDE_MEMORY_DIR"
-    cp "$TEMPLATE_DIR/memory/"*.md "$CLAUDE_MEMORY_DIR/"
-    # Deliver yaml/yml configs (e.g. day-rhythm-config.yaml) alongside .md files
-    for f in "$TEMPLATE_DIR/memory/"*.yaml "$TEMPLATE_DIR/memory/"*.yml; do
-        [ -f "$f" ] && cp "$f" "$CLAUDE_MEMORY_DIR/"
-    done
+    # issue #1105: recurse into memory/** instead of globbing only the top level, so nested
+    # files (memory/reference/agent-core.md) are delivered on a fresh install too — mirrors
+    # update.sh's relative-path delivery (issue #287/#294), which keeps nesting via
+    # "${fpath#memory/}" rather than basename, both in repair_pass() and in Step 6 propagation.
+    # issues #965/#967: record what was installed, so update.sh can later prove a copy nobody
+    # changed untouched and refresh it. A record that cannot be written only costs that proof.
+    MEMORY_RECORD_FAILED=false
+    while IFS= read -r -d '' f; do
+        rel="${f#"$TEMPLATE_DIR"/memory/}"
+        dst="$CLAUDE_MEMORY_DIR/$rel"
+        mkdir -p "$(dirname "$dst")"
+        cp "$f" "$dst"
+        memory_record_put "$WORKSPACE_DIR/.memory-deployed.tsv" "memory/$rel" \
+            "$(hash_file "$dst")" || MEMORY_RECORD_FAILED=true
+    done < <(find "$TEMPLATE_DIR/memory" -type f \( -name "*.md" -o -name "*.yaml" -o -name "*.yml" \) -print0 2>/dev/null)
     echo "  Copied to $CLAUDE_MEMORY_DIR"
+    if $MEMORY_RECORD_FAILED; then
+        echo "  ВНИМАНИЕ: не удалось записать $WORKSPACE_DIR/.memory-deployed.tsv; update.sh будет отличать нетронутые файлы памяти от изменённых по другим признакам." >&2
+    fi
 
     # Create symlink so CLAUDE.md references (memory/protocol-open.md etc.) resolve from workspace root
     if [ ! -e "$WORKSPACE_DIR/memory" ]; then
-        ln -s "$CLAUDE_MEMORY_DIR" "$WORKSPACE_DIR/memory"
-        echo "  Symlink: $WORKSPACE_DIR/memory → $CLAUDE_MEMORY_DIR"
+        MEMORY_LN_ERR=$(ln -s "$CLAUDE_MEMORY_DIR" "$WORKSPACE_DIR/memory" 2>&1) || true
+        # issue #869: on Windows (Git Bash without symlink rights) `ln -s` quietly
+        # makes a plain COPY instead of a link, and the failure only surfaced a
+        # day later as an ambiguous-memory error in update.sh. Check the result:
+        # a link, and one that points where it should (a dangling link made earlier
+        # makes `ln -s` fail with "File exists" yet still passes a bare [ -L ] test).
+        if [ -L "$WORKSPACE_DIR/memory" ] && [ "$(readlink "$WORKSPACE_DIR/memory")" = "$CLAUDE_MEMORY_DIR" ]; then
+            echo "  Symlink: $WORKSPACE_DIR/memory → $CLAUDE_MEMORY_DIR"
+        else
+            echo "  ВНИМАНИЕ: ссылка $WORKSPACE_DIR/memory → $CLAUDE_MEMORY_DIR не создана." >&2
+            [ -n "$MEMORY_LN_ERR" ] && echo "    ln: $MEMORY_LN_ERR" >&2
+            # The directory found here can only be the plain copy `ln -s` just made (the
+            # branch is entered only when nothing existed). Leaving it would keep two
+            # independent MEMORY.md copies AND make the next run skip this fix because
+            # "memory already exists" - so set it aside; the real memory in
+            # $CLAUDE_MEMORY_DIR was written above and is not touched.
+            if [ ! -L "$WORKSPACE_DIR/memory" ] && [ -e "$WORKSPACE_DIR/memory" ]; then
+                MEMORY_COPY_ASIDE="$WORKSPACE_DIR/memory.not-a-link-$(date +%Y%m%d%H%M%S)"
+                if mv "$WORKSPACE_DIR/memory" "$MEMORY_COPY_ASIDE" 2>/dev/null; then
+                    echo "    Копия, которую вместо ссылки сделал ln, перенесена в $MEMORY_COPY_ASIDE (память в $CLAUDE_MEMORY_DIR не тронута)." >&2
+                else
+                    echo "    Копию перенести не удалось: удалите $WORKSPACE_DIR/memory вручную (память в $CLAUDE_MEMORY_DIR не тронута)." >&2
+                fi
+            fi
+            echo "    Без ссылки CLAUDE.md не найдёт memory/ в рабочей папке." >&2
+            case "$(uname -s 2>/dev/null)" in
+                MINGW*|MSYS*|CYGWIN*)
+                    echo "    Windows: включите «Режим разработчика» и запустите терминал с MSYS=winsymlinks:nativestrict," >&2
+                    echo "    затем повторите установку (или создайте ссылку через mklink /D)." >&2
+                    ;;
+            esac
+        fi
     else
         echo "  WARN: $WORKSPACE_DIR/memory already exists, symlink skipped."
     fi
@@ -714,18 +850,20 @@ else
 fi
 
 # === 4b. Propagate skills, hooks, rules, lib, config, detectors, scripts, styles to workspace ===
-echo "[4b] Installing skills, hooks, rules, rules-lazy, lib, config, detectors, scripts, styles..."
+echo "[4b] Installing skills, hooks, rules, rules-lazy, lib, bin, config, detectors, scripts, styles..."
 if $DRY_RUN; then
-    echo "  [DRY RUN] Would copy .claude/{skills,hooks,rules,rules-lazy,lib,config,detectors,scripts,agents,styles}/ → $WORKSPACE_DIR/.claude/"
+    echo "  [DRY RUN] Would copy .claude/{skills,hooks,rules,rules-lazy,lib,bin,config,detectors,scripts,agents,styles}/ → $WORKSPACE_DIR/.claude/"
 else
     mkdir -p "$WORKSPACE_DIR/.claude"
     # lib/config/detectors — runtime dependencies капчер-шины (capture-bus.sh) и детекторов
     # scripts — требуется скиллами (напр. load-extensions.sh)
     # styles — дисциплина языковых стилей (WP-412)
     # rules-lazy — lazy-loaded rule expansions (role-prefixes-full), parity with update.sh
-    for subdir in skills hooks rules rules-lazy lib config detectors scripts agents styles templates; do
+    for subdir in skills hooks rules rules-lazy lib bin config detectors scripts agents styles templates; do
         if [ -d "$TEMPLATE_DIR/.claude/$subdir" ]; then
             cp -r "$TEMPLATE_DIR/.claude/$subdir" "$WORKSPACE_DIR/.claude/"
+            # .claude/bin holds extension-less executables (guarded-rm, issue #940)
+            [ "$subdir" = bin ] && chmod +x "$WORKSPACE_DIR/.claude/bin/"* 2>/dev/null || true
             echo "  ✓ .claude/$subdir/ → $WORKSPACE_DIR/.claude/$subdir/"
         fi
     done
@@ -734,6 +872,23 @@ else
         cp "$TEMPLATE_DIR/.claude/settings.json" "$WORKSPACE_DIR/.claude/settings.json"
         echo "  ✓ .claude/settings.json"
     fi
+    # issue #891: settings.json above was the only loose top-level .claude/
+    # file this installer ever copied. update-manifest.json declares several
+    # more (rules-registry.yaml among them — AR.112/AR.113, read by
+    # sql-pii-guard.sh on every .sql write) that this loop never delivered,
+    # so a fresh install has them checksummed in the manifest but absent on
+    # disk. Mirror every remaining loose file in the template's .claude/
+    # root instead of naming each one, the same way the subdir loop above
+    # mirrors directories rather than hardcoding a file list.
+    for f in "$TEMPLATE_DIR/.claude/"*; do
+        [ -f "$f" ] || continue
+        name=$(basename "$f")
+        case "$name" in
+            settings.json|settings.local.json) continue ;;  # already handled above
+        esac
+        cp "$f" "$WORKSPACE_DIR/.claude/$name"
+        echo "  ✓ .claude/$name"
+    done
 fi
 
 # Resolves IWE_TIER: env var → ~/.iwe/config.yaml → default T1
@@ -911,11 +1066,11 @@ if YAML_PYTHON3=$("$TEMPLATE_DIR/scripts/lib/find-python3.sh" 2>/dev/null); then
     :
 else
     YAML_PYTHON3=""
-    echo "  ⚠ Не найден python3 с библиотекой PyYAML — календарь, лента «Мир» и обзор РП будут отключаться с явной ошибкой зависимости."
+    echo "  ⚠ Не найден python3 >= 3.10 с библиотекой PyYAML — календарь, лента «Мир», обзор РП и core-скрипты (artifactor.py, session-dispatcher-tsekh.py) будут отключаться с явной ошибкой зависимости."
     if [ "$(uname)" = "Linux" ]; then
-        echo "    Установи: sudo apt install python3-yaml (или: pip3 install pyyaml)"
+        echo "    Установи: sudo apt install python3-yaml (или python3.10 + pip3 install pyyaml)"
     else
-        echo "    Установи: pip3 install pyyaml (python3 из Homebrew уже содержит pip3)"
+        echo "    Установи: brew install python3 && pip3 install pyyaml"
     fi
 fi
 
@@ -1076,7 +1231,7 @@ create_governance_github_repo() {
         GOVERNANCE_REPO_PUSH_FAILED=true
         return 0
     fi
-    local create_err
+    local create_err ls_remote_rc
     create_err=$(mktemp)
     if gh repo create "$GITHUB_USER/$GOVERNANCE_REPO" --private --source=. --push 2>"$create_err"; then
         rm -f "$create_err"
@@ -1088,7 +1243,19 @@ create_governance_github_repo() {
         # itself (network blip mid-command), which also satisfies
         # remote_governance_repo_exists(). Check the branch actually has a
         # ref on the remote before calling this "already exists — skip".
-        if timeout 10 git ls-remote --exit-code --heads "https://github.com/$GITHUB_USER/$GOVERNANCE_REPO.git" main >/dev/null 2>&1; then
+        # timeout(1) is GNU/Homebrew-only — absent on stock macOS (issue
+        # #1108). This whole branch only runs after `gh repo create --push`
+        # already failed mid-command (rare), so a single call site without a
+        # perl-polyfill copy: best-effort with timeout(1) when it exists,
+        # unwrapped (no hard deadline) when it doesn't, rather than a hard
+        # "command not found" failure either way.
+        ls_remote_rc=0
+        if command -v timeout >/dev/null 2>&1; then
+            timeout 10 git ls-remote --exit-code --heads "https://github.com/$GITHUB_USER/$GOVERNANCE_REPO.git" main >/dev/null 2>&1 || ls_remote_rc=$?
+        else
+            git ls-remote --exit-code --heads "https://github.com/$GITHUB_USER/$GOVERNANCE_REPO.git" main >/dev/null 2>&1 || ls_remote_rc=$?
+        fi
+        if [ "$ls_remote_rc" -eq 0 ]; then
             echo "  GitHub repo $GOVERNANCE_REPO already exists — skipping creation."
             rm -f "$create_err"
             return 0
@@ -1126,12 +1293,6 @@ adopt_existing_governance_repo() {
         echo "  Fix: inspect and clean it up (or rename it aside), then re-run setup.sh."
         exit 1
     fi
-    if $DRY_RUN; then
-        echo "  [DRY RUN] Remote $GITHUB_USER/$GOVERNANCE_REPO exists → would clone it into $MY_STRATEGY_DIR"
-        echo "  [DRY RUN] Would verify governance markers: ${GOVERNANCE_MARKERS[*]}"
-        generate_executor_catalog_for_governance
-        return
-    fi
     echo "  Remote $GITHUB_USER/$GOVERNANCE_REPO already exists (created elsewhere, e.g. from the browser) — adopting it."
     if ! gh repo clone "$GITHUB_USER/$GOVERNANCE_REPO" "$MY_STRATEGY_DIR" -- --quiet 2>/dev/null; then
         echo "  ERROR: could not clone $GITHUB_USER/$GOVERNANCE_REPO. Check network/access and re-run."
@@ -1164,17 +1325,21 @@ adopt_existing_governance_repo() {
     fi
 }
 
+# A dry run must not touch the network (test_fresh_seed_reproduction.sh pins this
+# with tripwire binaries), so the remote probe is skipped there and the preview
+# names both outcomes instead of guessing one (issue #956).
+# adopt_existing_governance_repo consequently only ever runs for real.
 if [ -d "$MY_STRATEGY_DIR/.git" ]; then
     echo "  $GOVERNANCE_REPO already exists as git repo."
     generate_executor_catalog_for_governance
-elif [ -d "$STRATEGY_TEMPLATE" ] && remote_governance_repo_exists; then
+elif [ -d "$STRATEGY_TEMPLATE" ] && ! $DRY_RUN && remote_governance_repo_exists; then
     adopt_existing_governance_repo
 elif $DRY_RUN; then
     if [ -d "$STRATEGY_TEMPLATE" ]; then
         echo "  [DRY RUN] Would create $GOVERNANCE_REPO from seed/strategy → $MY_STRATEGY_DIR"
         echo "  [DRY RUN] Would init git repo + initial commit"
         if ! $CORE_ONLY; then
-            echo "  [DRY RUN] Would create GitHub repo: $GITHUB_USER/$GOVERNANCE_REPO (private)"
+            echo "  [DRY RUN] Проверит GitHub: примет существующий репозиторий $GITHUB_USER/$GOVERNANCE_REPO или создаст новый (private)"
         fi
     else
         echo "  [DRY RUN] Would create minimal $GOVERNANCE_REPO (seed/strategy not found)"
@@ -1314,6 +1479,17 @@ else
     fi
 fi
 
+# === 8c. Capabilities of this installation (WP-7 F267 stage 1) ===
+# Records what the machine has (programs, gateway, backup target) as small state files
+# that scripts and the audit read. Best effort: a failure here never stops the install.
+if $DRY_RUN || $CORE_ONLY; then
+    :
+elif [ -f "$TEMPLATE_DIR/scripts/iwe-capabilities.sh" ]; then
+    echo "[8c] Определение возможностей установки..."
+    bash "$TEMPLATE_DIR/scripts/iwe-capabilities.sh" probe --announce \
+        || echo "  ⚠ iwe-capabilities.sh не записал состояние (не критично). Повторить: bash $TEMPLATE_DIR/scripts/iwe-capabilities.sh probe"
+fi
+
 # === Done ===
 echo ""
 if $DRY_RUN; then
@@ -1340,7 +1516,7 @@ else
     echo ""
     echo "Verify installation:"
     echo "  ✓ CLAUDE.md:   $WORKSPACE_DIR/CLAUDE.md"
-    echo "  ✓ Memory:      $CLAUDE_MEMORY_DIR/ ($(ls "$CLAUDE_MEMORY_DIR"/*.md 2>/dev/null | wc -l | tr -d ' ') files)"
+    echo "  ✓ Memory:      $CLAUDE_MEMORY_DIR/ ($(find "$CLAUDE_MEMORY_DIR" -type f -name "*.md" 2>/dev/null | wc -l | tr -d ' ') files)"
     echo "  ✓ Symlink:     $WORKSPACE_DIR/memory → $CLAUDE_MEMORY_DIR"
     echo "  ✓ $GOVERNANCE_REPO: $MY_STRATEGY_DIR/"
     echo "  ✓ Template:    $TEMPLATE_DIR/"
@@ -1378,7 +1554,12 @@ else
         echo "  validate-режим setup.sh проверит: env-конфиг, обязательные файлы,"
         echo "  extensions, доступность MCP, структурные инварианты."
         echo ""
-        read -p "Запустить проверку сейчас? (y/n) " -n 1 -r || true
+        # #1010 F11: no question without a person to answer it (SETUP_CI or no terminal on stdin):
+        # `read` on an open stdin with no TTY waits forever.
+        REPLY=""
+        if [ -z "${SETUP_CI:-}" ] && [ -t 0 ]; then
+            read -p "Запустить проверку сейчас? (y/n) " -n 1 -r || true
+        fi
         echo ""
         if [[ ${REPLY:-} =~ ^[Yy]$ ]]; then
             echo ""

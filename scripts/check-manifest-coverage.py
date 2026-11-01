@@ -29,7 +29,7 @@ from pathlib import Path
 # - params.yaml     — пользовательский конфиг (авторский)
 # - generate-manifest.sh / update-manifest.json — инструментарий манифеста
 # - README.md / LICENSE / CONTRIBUTING.md / CHANGELOG.md / CODE_OF_CONDUCT.md /
-#   SECURITY.md / PRIVACY.md / CODEOWNERS / CITATION.cff — мета репо (только корень)
+#   SECURITY.md / PRIVACY.md / CODEOWNERS / CITATION.cff / .gitattributes — мета репо (только корень)
 # - .gitkeep        — маркеры пустых папок
 # - .DS_Store       — мусор macOS
 
@@ -47,6 +47,7 @@ _ROOT_ONLY_EXCLUDED_NAMES = frozenset({
     "PRIVACY.md",
     "CODEOWNERS",
     "CITATION.cff",
+    ".gitattributes",
 })
 
 # Имена файлов, исключаемые везде независимо от папки.
@@ -73,6 +74,11 @@ _EXCLUDED_EXACT_PATHS = frozenset({
     ".github/workflows/translate-sync.yml",
     ".github/workflows/validate-template.yml",
     ".github/workflows/weekly-release.yml",
+    # WP-529 (29.09.2026): release-pipeline guards of this repo (stale release
+    # PR notice, CHANGELOG entry gate) - maintainer-only, same category as
+    # weekly-release.yml above.
+    ".github/workflows/changelog-gate.yml",
+    ".github/workflows/release-watchdog.yml",
     # WP-529 Ф21: this repo's own red-team attestation pipeline (compute
     # digest + sign via GitHub Attestations API) — references THIS repo's
     # specific red-team-auditors environment and policy file, same
@@ -155,7 +161,22 @@ def _parse_excluded_paths(raw: object) -> list[str]:
     return result
 
 
+def _force_utf8_streams() -> None:
+    """Emit the report as UTF-8 whatever the console code page is.
+
+    On Windows (cp1251/cp866 consoles) printing the status emoji raises
+    UnicodeEncodeError -- on the success path, which turned a passed check
+    into a blocked commit (issue #927). reconfigure() exists on text streams
+    from Python 3.7; skip silently where a stream lacks it (e.g. replaced).
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
+
+
 def main() -> None:
+    _force_utf8_streams()
     if len(sys.argv) < 2:
         print("Usage: git ls-files | python3 check-manifest-coverage.py <manifest.json>",
               file=sys.stderr)

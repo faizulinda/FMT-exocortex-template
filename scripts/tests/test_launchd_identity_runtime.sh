@@ -48,6 +48,7 @@ assert_plist_identity() {
 PLISTS=(
     roles/strategist/scripts/launchd/com.strategist.morning.plist
     roles/strategist/scripts/launchd/com.strategist.weekreview.plist
+    roles/strategist/scripts/launchd/com.strategist.notereview.plist
     roles/synchronizer/scripts/launchd/com.exocortex.scheduler.plist
     roles/extractor/scripts/launchd/com.extractor.inbox-check.plist
 )
@@ -187,7 +188,10 @@ from pathlib import Path
 import sys
 
 text = Path(sys.argv[1]).read_text(encoding="utf-8")
-assert text.count('if run_strategist_scenario "') == 4
+# week-review and morning only: note-review has no scheduled run since the template owner's
+# decision of July 2026 (#961); the dedicated check is scripts/tests/test_issue_961_*.sh
+assert text.count('if run_strategist_scenario "') == 2
+assert 'run_strategist_scenario "note-review"' not in text
 assert text.count('timeout "$TASK_TIMEOUT_LONG" "$STRATEGIST_SH"') == 1
 PY
 

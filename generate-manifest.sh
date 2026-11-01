@@ -15,6 +15,19 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
+# An unresolved conflict leaves each conflicted path in the index at stages
+# 1/2/3 with no stage 0 — plain `git ls-files` below lists such a path once
+# per stage (3x), and every stage-3 duplicate silently became a manifest
+# entry (found via 3 real CI failures on PR #1296/#1297, 2026-10-21: the
+# duplicate CHANGELOG.md entries broke scripts/verify-manifest.sh). Fail
+# before generating rather than ship a corrupt manifest.
+UNMERGED=$(git -C "$SCRIPT_DIR" diff --name-only --diff-filter=U)
+if [ -n "$UNMERGED" ]; then
+    echo "ERROR: незавершённый конфликт слияния — запустите generate-manifest.sh после git add/rebase --continue:" >&2
+    echo "$UNMERGED" >&2
+    exit 1
+fi
+
 echo "Генерация манифеста v$VERSION..."
 
 # === Исключения, которые НЕ попадают ни в files, ни в excluded_paths ===
@@ -94,6 +107,7 @@ FILES_EXCLUDE_EXACT=(
     "PRIVACY.md"
     "CODEOWNERS"
     "CITATION.cff"
+    ".gitattributes"
     "params.yaml"
     "params.yaml.example"
     "extensions/day-close.after.md"
@@ -109,6 +123,13 @@ GITHUB_EXPLICIT_INCLUDE=(
     ".github/workflows/notify-security.yml"
     ".github/workflows/notify-update.yml"
     ".github/workflows/post-release-audit.yml"
+    # issue #1223: never shipped at all (not in files, not in excluded_paths),
+    # so a fork's copy froze at whatever version it last had and stayed red
+    # forever on checks that need files this manifest deliberately never
+    # delivers (setup/integration-contract-validator.sh, scripts/tests/*).
+    # Shipping it now delivers the issue #1223 repo-gate fix (jobs skip on
+    # forks instead of failing) to existing forks, not just new ones.
+    ".github/workflows/validate-template.yml"
 )
 GITHUB_CI_ONLY_EXCLUDE=(
     ".github/workflows/nightly-template-audit.yml"
@@ -131,6 +152,11 @@ PLATFORM_HOOKS_EXPLICIT_INCLUDE=(
     "seed/strategy/.githooks/pre-commit"
     "seed/strategy/.githooks/pre-push"
     "seed/strategy/scripts/install-hooks.sh"
+    # WP-485 Ф14: portable isolate-push for template users (а∩г)
+    "seed/strategy/scripts/isolate-push.sh"
+    # issue #941: strategist.sh publishes through $governance/scripts/ds-publish.sh,
+    # which the template never shipped; update.sh delivers it only when absent.
+    "seed/strategy/scripts/ds-publish.sh"
     # #533: existing installations need the subject-scoped Day Open reader.
     "seed/strategy/scripts/day-open-llm-fill.py"
     "seed/strategy/scripts/update-derived-snapshot.py"
@@ -153,6 +179,7 @@ PLATFORM_HOOKS_EXPLICIT_INCLUDE=(
     "seed/strategy/scripts/day-open-ledger-render-patch.py"
     "seed/strategy/scripts/day-open-multiplier-backfill-patch.py"
     "seed/strategy/scripts/day-open-priorities-patch.py"
+    "seed/strategy/scripts/day-open-sync-banner-patch.py"  # stale-input banner step 4.58 (#1245)
     "seed/strategy/scripts/day-open-version-check-patch.py"
     "seed/strategy/scripts/ledger-append.sh"
     "seed/strategy/scripts/llm-proxy-launcher.sh"
@@ -166,6 +193,10 @@ PLATFORM_HOOKS_EXPLICIT_INCLUDE=(
     "seed/strategy/scripts/lib/notification-render.sh"
     "seed/strategy/scripts/lib/telegram.sh"
     "seed/strategy/scripts/lib/wp_inbox.py"
+    # issue #1102: extractor.sh looks for scripts/lib/publish-gate.sh since
+    # WP-5 F48, but it never shipped -- every install silently fell back to
+    # a raw `git push` with no retry on a stale origin/main.
+    "seed/strategy/scripts/lib/publish-gate.sh"
 )
 # #533: unlike ordinary seed content, these are platform-owned delivery and
 # upgrade infrastructure.  Keep each path explicit so the blanket seed/
@@ -215,6 +246,10 @@ SCRIPT_CONTRACT_EXPLICIT_INCLUDE=(
     "scripts/tests/test_critical_alert_failure_matrix.sh"
     "scripts/tests/test_create_wp_repeat_and_cwd.sh"
     "scripts/tests/test_create_wp_hypothesis_relation.sh"
+    # issue #956: run-issue-tests.sh (delivered) names both in ADDITIONAL_ISSUE_TESTS,
+    # and a registered test file that is missing fails the runner on an installed copy.
+    "scripts/tests/test_create_wp_verification_class.sh"
+    "scripts/tests/test_create_wp_artifactor_gate.sh"
     "scripts/tests/test_day_close_lock_timezone.sh"
     "scripts/tests/test_fresh_seed_reproduction.sh"
     "scripts/tests/test_generate_manifest_registers_setup_exclusions.sh"
@@ -234,6 +269,11 @@ SCRIPT_CONTRACT_EXPLICIT_INCLUDE=(
     # ship with the template — a user's copy must be able to run its own
     # issue-regression gate (same rationale as the 03.08 block above).
     "scripts/tests/run-issue-tests.sh"
+    "scripts/tests/test_issue_1032_strategy_session_offline.sh"
+    "scripts/tests/test_issue_1032_windows_fail_closed.sh"
+    # The delivered #1257 test invokes this verifier regression suite.
+    "scripts/tests/check-wp-registered-smoke.sh"
+    "scripts/tests/test_issue_1257_wp_registration.sh"
     "scripts/tests/test_issue_434_pipeline_scaffold_only.sh"
     "scripts/tests/test_issue_453_calendar_private_visibility.sh"
     "scripts/tests/test_issue_455_scaffold_missing_lib_fatal.sh"
@@ -255,6 +295,14 @@ SCRIPT_CONTRACT_EXPLICIT_INCLUDE=(
     # runs in CI via run-issue-tests.sh, must ship with the template like its
     # bash sibling above.
     "scripts/tests/test_issue_557_zsh_special_vars.sh"
+    # РП-7 Ф216 (11.10): фаза-1 гейт issue #1114 (cp1251) и регрессии #1147
+    # доставляются, как вся семья test_issue_*; baseline — обязательный
+    # ratchet-файл доставляемого check-python-encoding.py (та же причина, что
+    # python-resolver-baseline.txt выше: без него гейт на установке падает).
+    "scripts/tests/cp1251-smoke.sh"
+    "scripts/tests/python-encoding-baseline.txt"
+    "scripts/tests/test_issue_1114_encoding_gate.sh"
+    "scripts/tests/test_issue_1147_memory_migrate.sh"
 )
 
 is_explicit_include() {

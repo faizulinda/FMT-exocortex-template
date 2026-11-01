@@ -30,8 +30,17 @@ portable_date_offset() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-WORKSPACE="$HOME/IWE"
-GOVERNANCE_DIR="${GOVERNANCE_DIR:-$WORKSPACE/DS-strategy}"
+# issue #875: the workspace comes from the environment, not from a folder name
+# guessed under $HOME - an install outside ~/IWE otherwise reads another
+# workspace's data without a single error.
+WORKSPACE="${IWE_WORKSPACE:-$HOME/IWE}"
+# issue #1106: this fell back to the literal "DS-strategy" directly,
+# ignoring IWE_GOVERNANCE_REPO — every other script that resolves a
+# governance-repo path (roles/strategist/scripts/strategist.sh,
+# roles/synchronizer/scripts/daily-report.sh, roles/synchronizer/scripts/
+# templates/*.sh, roles/extractor/scripts/extractor.sh) nests the env var
+# inside the default instead.
+GOVERNANCE_DIR="${GOVERNANCE_DIR:-$WORKSPACE/${IWE_GOVERNANCE_REPO:-DS-strategy}}"
 LOG_DIR="$HOME/logs/synchronizer"
 DATE=$(date +%Y-%m-%d)
 LOG_FILE="$LOG_DIR/dt-collect-$DATE.log"
@@ -299,7 +308,10 @@ collect_wp() {
     # Формат строки: | <NNN> | <P> | <Название> | <Ст> | <Репо> | <Бюджет> |
     # Статусы: ✅ done · 🔄 in_progress · ⏳ pending · 📦 archived · ↗️ merged · 🧪 testing
     local REGISTRY_FILE="$GOVERNANCE_DIR/docs/WP-REGISTRY.md"
-    local MEMORY_FILE="$HOME/.claude/projects/-Users-$(whoami)-IWE/memory/MEMORY.md"
+    # issue #875: was "$HOME/.claude/projects/-Users-$(whoami)-IWE/memory/...", which
+    # assumes the folder is literally named IWE and read a foreign workspace's
+    # memory otherwise. memory/ inside the workspace is the symlink to the real one.
+    local MEMORY_FILE="$WORKSPACE/memory/MEMORY.md"
 
     python3 -c "
 import json, os

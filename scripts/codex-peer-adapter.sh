@@ -9,7 +9,7 @@
 #
 # Env overrides:
 #   CODEX_BIN     — override codex binary path
-#   IWE_TEMPLATE  — path to FMT-exocortex-template (default: $HOME/IWE/FMT-exocortex-template)
+#   IWE_TEMPLATE  — path to FMT-exocortex-template for optional Hindsight retain
 #   IWE_PEER_LOCK_DIR, IWE_HINDSIGHT_RETAIN — same as kimi-peer-adapter.sh
 #   CODEX_PEER_REASONING_EFFORT — model_reasoning_effort passed to `codex exec`
 #     via -c (default: medium). Overrides whatever ~/.codex/config.toml sets
@@ -34,6 +34,13 @@ set -uo pipefail
 
 IWE_TEMPLATE="${IWE_TEMPLATE:-$HOME/IWE/FMT-exocortex-template}"
 TEMPLATE_SCRIPTS="$IWE_TEMPLATE/scripts"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The reply is read by this adapter, not by the pilot: the style guard inside the
+# vendor CLI must not ask for a rewrite (WP-388 Ф24). Same line in claude/kimi adapters.
+# Codex loads the project hook only when the working directory is an IWE checkout
+# (e.g. --add-dir of the IWE root), so this is a safety net for that call shape.
+export IWE_STYLE_CONTEXT=peer
 
 # === Codex binary auto-detect: env override → PATH → VS Code extension (bundled, versioned dir) ===
 CODEX_BIN="${CODEX_BIN:-$(command -v codex 2>/dev/null || true)}"
@@ -56,6 +63,15 @@ if [ -z "$CODEX_BIN" ] || [ ! -x "$CODEX_BIN" ]; then
   echo "  Looked in: PATH, ~/.vscode/extensions/openai.chatgpt-*/bin/*/codex (and .vscode-server/.cursor variants)" >&2
   exit 1
 fi
+
+# The three safety filters travel with the adapter. Refuse the peer call if a
+# local copy is absent; an absent map must never silently disable filtering.
+for FILTER_FILE in peer-adapter-filter.py content-filter-apply.py content-filter-map.txt; do
+  if [ ! -s "$SCRIPT_DIR/$FILTER_FILE" ]; then
+    echo "ABORT: required local peer filter missing or empty: $SCRIPT_DIR/$FILTER_FILE" >&2
+    exit 2
+  fi
+done
 
 # Auto-source OpenRouter key (hosts without a ChatGPT login route codex
 # through OpenRouter, see reference_codex_peer_openrouter_linux.md).
@@ -102,7 +118,7 @@ if [ ${#MODEL_ARG[@]} -ge 2 ]; then
   esac
 fi
 
-# === Фильтрация --add-dir через .agentigore + PII sanity-check (шаблонные скрипты, read-only reuse) ===
+# === Фильтрация --add-dir через .agentigore + PII sanity-check (соседние копии) ===
 
 FILTERED_DIRS=()
 # `-t template` is BSD/GNU compatible in practice but its exact semantics
@@ -132,14 +148,14 @@ for ADD_DIR in "${ADD_DIRS[@]+"${ADD_DIRS[@]}"}"; do
   fi
 done
 
-# === Фильтрация через Python fnmatch + PII sanity-check (шаблонный peer-adapter-filter.py) ===
+# === Фильтрация через Python fnmatch + PII sanity-check (локальный peer-adapter-filter.py) ===
 for ADD_DIR in "${ADD_DIRS[@]+"${ADD_DIRS[@]}"}"; do
   [ ! -d "$ADD_DIR" ] && continue
   CLEAN_DIR="$TMP_ROOT/$(basename "$ADD_DIR")"
   mkdir -p "$CLEAN_DIR"
 
   AGENTIGORE_FILE="$MERGED_AGENTIGORE" SRC_DIR="$ADD_DIR" DST_DIR="$CLEAN_DIR" \
-    python3 "$TEMPLATE_SCRIPTS/peer-adapter-filter.py"
+    python3 "$SCRIPT_DIR/peer-adapter-filter.py"
   RC=$?
   if [ $RC -eq 3 ]; then
     exit 3
@@ -151,17 +167,18 @@ for ADD_DIR in "${ADD_DIRS[@]+"${ADD_DIRS[@]}"}"; do
   FILTERED_DIRS+=("--add-dir" "$CLEAN_DIR")
 done
 
-# === Content-filter guard (переиспользуем шаблонную content-filter-map.txt) ===
+# === Content-filter guard (локальная копия content-filter-map.txt) ===
 PROMPT_FILE="$TMP_ROOT/peer-prompt.in"
 cat > "$PROMPT_FILE"
 
-CONTENT_FILTER_MAP="$TEMPLATE_SCRIPTS/content-filter-map.txt"
-if [ -f "$CONTENT_FILTER_MAP" ] && [ -s "$CONTENT_FILTER_MAP" ]; then
-  if python3 "$TEMPLATE_SCRIPTS/content-filter-apply.py" "$CONTENT_FILTER_MAP" \
-       < "$PROMPT_FILE" > "$PROMPT_FILE.filtered" 2>/dev/null \
-     && [ -s "$PROMPT_FILE.filtered" ]; then
-    PROMPT_FILE="$PROMPT_FILE.filtered"
-  fi
+CONTENT_FILTER_MAP="$SCRIPT_DIR/content-filter-map.txt"
+if python3 "$SCRIPT_DIR/content-filter-apply.py" "$CONTENT_FILTER_MAP" \
+     --strict-map < "$PROMPT_FILE" > "$PROMPT_FILE.filtered" 2>/dev/null \
+   && [ -s "$PROMPT_FILE.filtered" ]; then
+  PROMPT_FILE="$PROMPT_FILE.filtered"
+else
+  echo "ABORT: local peer content filter failed or returned an empty prompt" >&2
+  exit 2
 fi
 
 # === Sanitize surrogate characters before Codex call ===
@@ -387,6 +404,27 @@ if [ "${IWE_PEER_PLAIN:-0}" != "1" ]; then
     if printf '%s' "$_LANG_RESULT" | grep -q '"alert": true'; then
       echo "WARNING: peer response may not be in Russian (language-check alert) — $_LANG_RESULT" >&2
     fi
+  fi
+
+  # РП-388 Ф17: тот же общий style-check, что у Kimi (peer_adapter_check_style
+  # в lib/peer-adapter-common.sh) — здесь инлайн, не через ту функцию, потому
+  # что этот файл common.sh не сорсит (существующая архитектура этого файла,
+  # не правлю здесь). Один и тот же хук-ядро (response-clarity-hook.sh) через
+  # ту же обёртку (style-check-text.sh), не вторая реализация.
+  _STYLE_WRAPPER="${IWE_ROOT:-$HOME/IWE}/.claude/hooks/style-check-text.sh"
+  if [ -x "$_STYLE_WRAPPER" ]; then
+    _STYLE_TMP=$(mktemp) && {
+      printf '%s' "$CODEX_OUTPUT" > "$_STYLE_TMP" 2>/dev/null
+      # timeout 10: same guard as peer_adapter_check_style in
+      # peer-adapter-common.sh (code review, this session) -- a hung hook
+      # here would stall delivery of CODEX_OUTPUT to stdout below. `timeout`
+      # is GNU/Homebrew-only (platform-compat check, WP-5) -- command -v
+      # guard: no timeout(1) on this host -> skip the check entirely.
+      if command -v timeout >/dev/null 2>&1; then
+        timeout 10 bash "$_STYLE_WRAPPER" "codex" "$_STYLE_TMP" peer >/dev/null 2>&1 || true
+      fi
+      rm -f "$_STYLE_TMP"
+    }
   fi
 fi
 

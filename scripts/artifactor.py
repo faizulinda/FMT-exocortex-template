@@ -7,8 +7,11 @@ Exit codes:
   0 — keyword match, JSON on stdout (schema_version 3, WP-575 Ф2)
   1 — INSUFFICIENT_INPUT (< 5 words)
   2 — NO_KEYWORD_MATCH (needs LLM fallback)
-  3 — CONFIG_ERROR (result-kinds-registry.yaml в PACK-digital-platform
-      не читается/повреждён — fail-closed, не тихий откат к schema 1)
+  3 — CONFIG_ERROR (PACK-digital-platform установлен, но result-kinds-registry.yaml
+      в нём не читается/пуст/повреждён — fail-closed, не тихий откат к schema 1.
+      Если PACK-digital-platform целиком не установлен — issue #1231, штатно для
+      обычной установки шаблона — это не CONFIG_ERROR, а result_kind_resolution:
+      "unresolved" с expected_result_kind: None)
 
 expected_result_kind (WP-481 Ф7, консенсус пир-сессии
 2026-08-05-14-codex-wp481-f7-impl): дискриминатор ожидаемого kind-а результата
@@ -52,26 +55,42 @@ import re
 # резолва в DS-strategy/scripts/check-result-kind.py). IWE_ROOT: явный env
 # override, иначе родитель этого файла на два уровня выше scripts/
 # (штатная раскладка {{WORKSPACE_DIR}}/scripts/artifactor.py рядом с {{WORKSPACE_DIR}}/PACK-digital-platform).
+PACK_ROOT_REL = "PACK-digital-platform"
 PACK_REGISTRY_REL = os.path.join(
-    "PACK-digital-platform", "pack", "digital-platform", "result-kinds-registry.yaml"
+    PACK_ROOT_REL, "pack", "digital-platform", "result-kinds-registry.yaml"
 )
 KIND_ID_LINE_RE = re.compile(r"^\s+-\s+kind_id:\s*(\S+)\s*$")
 
 
+class RegistryPackMissing(Exception):
+    """PACK-digital-platform сам не установлен — issue #1231: авторский Pack не
+    входит в шаблон, значит это штатное состояние обычной установки, не порча."""
+
+
+def resolve_iwe_root():
+    return os.environ.get("IWE_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 def resolve_registry_path():
-    iwe_root = os.environ.get("IWE_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(iwe_root, PACK_REGISTRY_REL)
+    return os.path.join(resolve_iwe_root(), PACK_REGISTRY_REL)
 
 
 def load_registry_kind_ids():
     """Line-based, stdlib-only извлечение множества kind_id (без gate_ready —
     это забота /verify, не классификатора). Возвращает set() или None при
-    отсутствии/ошибке чтения файла (вызывающий код решает, CONFIG_ERROR это
-    или нет)."""
+    ошибке чтения/порче файла (вызывающий код решает, CONFIG_ERROR это или
+    нет). Поднимает RegistryPackMissing, если PACK-digital-platform целиком
+    не установлен — это отдельный от порчи случай (issue #1231): Pack
+    авторский и в шаблон не входит, у обычного пользователя его нет."""
     path = resolve_registry_path()
     try:
         with open(path, encoding="utf-8") as f:
             lines = f.readlines()
+    except FileNotFoundError:
+        pack_root = os.path.join(resolve_iwe_root(), PACK_ROOT_REL)
+        if not os.path.isdir(pack_root):
+            raise RegistryPackMissing(pack_root) from None
+        return None  # Pack установлен, но файла реестра в нём нет — порча, CONFIG_ERROR
     except OSError:
         return None
     ids = {m.group(1) for line in lines if (m := KIND_ID_LINE_RE.match(line))}
@@ -93,35 +112,35 @@ KEYWORD_MAP = {
     "week close": ("week_close", "trivial", "WorkDone", "Итоги недели", "episteme"),
     "закрывай неделю": ("week_close", "trivial", "WorkDone", "Итоги недели", "episteme"),
     "month-close": ("month_close", "trivial", "WorkDone", "Итоги месяца", "episteme"),
-    "peer-сессия": ("peer_session", "trivial", None, "Итоговый отчёт пир-сессии", "unresolved"),  # SPECIAL_RESOLUTION: deferred-to-session; result_type тоже неизвестен до Decision Gate внутри сессии
-    "peer сессия": ("peer_session", "trivial", None, "Итоговый отчёт пир-сессии", "unresolved"),
+    "пир-сесси": ("peer_session", "trivial", None, "Отчёт пир-сессии", "unresolved"),  # stem matches «пир-сессия/-ии/-ию/-ией»; SPECIAL_RESOLUTION: deferred-to-session; result_type тоже неизвестен до Decision Gate внутри сессии
+    "пир сесси": ("peer_session", "trivial", None, "Отчёт пир-сессии", "unresolved"),
     # closed-loop
-    "бот упал": ("bot_fix", "closed-loop", "WorkDone", "Исправленный бот", "system"),
-    "ошибк бота": ("bot_fix", "closed-loop", "WorkDone", "Исправленный бот", "system"),     # matches «ошибка» and «ошибки»
-    "фиксы": ("bug_fix", "closed-loop", "WorkDone", "Исправленный дефект", "system"),
-    "устранить": ("bug_fix", "closed-loop", "WorkDone", "Исправленный дефект", "system"),
-    "доделать рп": ("wp_finish", "closed-loop", "WorkDone", "Завершённая фаза РП", "unresolved"),  # результат зависит от конкретного РП — код или документ
-    "хвосты рп": ("wp_finish", "closed-loop", "WorkDone", "Завершённая фаза РП", "unresolved"),
+    "бот упал": ("bot_fix", "closed-loop", "WorkDone", "Бот", "system"),
+    "ошибк бота": ("bot_fix", "closed-loop", "WorkDone", "Бот", "system"),     # matches «ошибка» and «ошибки»
+    "фиксы": ("bug_fix", "closed-loop", "WorkDone", "Патч кода", "system"),
+    "устранить": ("bug_fix", "closed-loop", "WorkDone", "Патч кода", "system"),
+    "доделать рп": ("wp_finish", "closed-loop", "WorkDone", "Файлы фазы РП", "unresolved"),  # результат зависит от конкретного РП — код или документ
+    "хвосты рп": ("wp_finish", "closed-loop", "WorkDone", "Файлы фазы РП", "unresolved"),
     "закрыть рп": ("wp_close", "closed-loop", "WorkDone", "Отчёт о закрытии РП", "unresolved"),
-    "передать андрею": ("wp_close", "closed-loop", "WorkDone", "Переданный результат РП", "unresolved"),
-    "актуализация wp": ("wp_actualize", "closed-loop", "WorkDone", "Актуализированная карточка РП", "episteme"),
+    "передать андрею": ("wp_close", "closed-loop", "WorkDone", "Файлы РП", "unresolved"),
+    "актуализация wp": ("wp_actualize", "closed-loop", "WorkDone", "Карточка РП", "episteme"),
     "ревью рп": ("code_review", "closed-loop", "Episteme", "Отчёт ревью", "episteme"),
     "ревью работы": ("code_review", "closed-loop", "Episteme", "Отчёт ревью", "episteme"),
     "разбор ke": ("ke_review", "closed-loop", "ChoiceResult", "Решение по кандидатам знаний", "episteme"),  # R15 accept/reject/defer, не граф claim'ов
     "триаж": ("wp_triage", "closed-loop", "ChoiceResult", "Решение по триажу РП", "episteme"),
-    "реализация плана": ("wp_implement", "closed-loop", "WorkDone", "Реализованный план", "unresolved"),  # план может реализоваться и кодом, и документом
-    "миграция": ("wp_implement", "closed-loop", "WorkDone", "Выполненная миграция", "system"),
+    "реализация плана": ("wp_implement", "closed-loop", "WorkDone", "Рабочие пакеты из плана", "unresolved"),  # план уже был; появляются РП, кодом или документом
+    "миграция": ("wp_implement", "closed-loop", "WorkDone", "Данные в целевом контуре", "system"),
     "создай pack": ("pack_create", "closed-loop", "Episteme", "Паспорт Pack", "episteme"),
     "новый pack": ("pack_create", "closed-loop", "Episteme", "Паспорт Pack", "episteme"),
-    "ротация секретов": ("ops_security", "closed-loop", "WorkDone", "Ротированные секреты", "system"),
-    "fmt remaining": ("fmt_deploy", "closed-loop", "WorkDone", "Доставленный шаблон", "system"),
+    "ротация секретов": ("ops_security", "closed-loop", "WorkDone", "Секреты в хранилище", "system"),
+    "fmt remaining": ("fmt_deploy", "closed-loop", "WorkDone", "Файлы шаблона FMT", "system"),
     # open-loop
-    "диагностика": ("diagnosis", "open-loop", "Episteme", "Диагностический отчёт", "episteme"),
+    "диагностика": ("diagnosis", "open-loop", "Episteme", "Отчёт диагностики", "episteme"),
     "темы для пост": ("content_plan", "open-loop", "ChoiceResult", "План публикаций", "episteme"),   # matches «поста» and «постов»; выбор темы+аудитории+дня, не просто перечень
     "темы, идеи": ("content_plan", "open-loop", "ChoiceResult", "План публикаций", "episteme"),
     "темы идеи": ("content_plan", "open-loop", "ChoiceResult", "План публикаций", "episteme"),
-    "сценарии тз": ("spec_writing", "open-loop", None, "Техническое задание", "episteme"),  # SPECIAL_RESOLUTION: unresolved kind — ни один из 6 kind-ов не подходит (найдено на WP-421); result_type при этом однозначен (документ)
-    "стратег": ("strategy", "open-loop", "ChoiceResult", "Актуализированная стратегия", "episteme"),
+    "сценарии тз": ("spec_writing", "open-loop", None, "Задание на сценарии", "episteme"),  # SPECIAL_RESOLUTION: unresolved kind — ни один из 6 kind-ов не подходит (найдено на WP-421); result_type при этом однозначен (документ)
+    "стратег": ("strategy", "open-loop", "ChoiceResult", "Документ стратегии", "episteme"),
     # problem-framing
     "придумать": ("design", "problem-framing", "ProblemCard", "Карточка проблемы", "episteme"),
     "что-то с": ("design", "problem-framing", "ProblemCard", "Карточка проблемы", "episteme"),
@@ -166,8 +185,10 @@ def classify(
 def resolve_result_kind(task_type: str, kind_id: str | None) -> tuple[str | None, str]:
     """Проверить kind_id членством в живом реестре (ловит дрейф KEYWORD_MAP
     vs реестра, не только доверяет хардкоду). Возвращает (expected_result_kind,
-    result_kind_resolution). Реестр нечитаем/пуст → CONFIG_ERROR (exit 3),
-    не тихий откат к schema 1 — тот же fail-closed принцип, что в
+    result_kind_resolution). PACK-digital-platform не установлен (issue #1231,
+    штатно для обычной установки шаблона) → result_kind_resolution: "unresolved".
+    Pack установлен, но реестр в нём нечитаем/пуст/повреждён → CONFIG_ERROR
+    (exit 3), не тихий откат к schema 1 — тот же fail-closed принцип, что в
     check-result-kind.py."""
     if kind_id is None:
         reason = SPECIAL_RESOLUTION.get(task_type)
@@ -175,7 +196,15 @@ def resolve_result_kind(task_type: str, kind_id: str | None) -> tuple[str | None
             raise AssertionError(f"KEYWORD_MAP: {task_type!r} имеет kind_id=None без записи в SPECIAL_RESOLUTION")
         return None, reason
 
-    registry_ids = load_registry_kind_ids()
+    try:
+        registry_ids = load_registry_kind_ids()
+    except RegistryPackMissing as exc:
+        print(
+            f"WARNING: PACK-digital-platform не установлен ({exc}) — "
+            "expected_result_kind не резолвится, result_kind_resolution=unresolved",
+            file=sys.stderr,
+        )
+        return None, "unresolved"
     if registry_ids is None:
         print(
             f"CONFIG_ERROR: реестр не читается по {resolve_registry_path()} "

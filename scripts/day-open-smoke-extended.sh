@@ -25,6 +25,8 @@
 
 set -uo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
+
 START_TS=$(date +%s)
 FORCE=false
 [ "${1:-}" = "--force" ] && FORCE=true
@@ -36,7 +38,7 @@ TTL_MIN=90
 
 # Проверить TTL — если cache свежий, не запускаться (если не --force)
 if [ "$FORCE" = "false" ] && [ -f "$CACHE_FILE" ]; then
-  cache_ts=$(stat -f %m "$CACHE_FILE" 2>/dev/null || stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)
+  cache_ts=$(stat -c %Y "$CACHE_FILE" 2>/dev/null || stat -f %m "$CACHE_FILE" 2>/dev/null || echo 0)
   now_ts=$(date +%s)
   age_min=$(( (now_ts - cache_ts) / 60 ))
   if [ "$age_min" -lt "$TTL_MIN" ]; then
@@ -52,8 +54,11 @@ check_dt_collect() {
     echo "fail:script-missing"
     return
   fi
-  # Запустить dry-run с timeout 30с
-  if timeout 30 bash "$script" --dry-run 2>/dev/null >/dev/null; then
+  # Запустить dry-run с timeout 30с. iwe_timeout (lib/common.sh) — issue #1108:
+  # a bare `timeout` here is GNU/Homebrew-only and "command not found" (exit
+  # 127) on stock macOS with no Homebrew, making every single check in this
+  # script fail:exit-127 with no indication the real cause was a missing tool.
+  if iwe_timeout 30 bash "$script" --dry-run 2>/dev/null >/dev/null; then
     echo "ok"
   else
     echo "fail:exit-$?"
@@ -96,5 +101,16 @@ cat > "$CACHE_FILE" <<EOF
   "elapsed_sec": $ELAPSED
 }
 EOF
+
+# The cache is a regenerable runtime file, not a work product (issue #1146):
+# keep it out of `git status` of installs whose seed .gitignore predates the entry.
+EXCLUDE_FILE=$(git -C "$DS_STRATEGY" rev-parse --git-path info/exclude 2>/dev/null || true)
+if [ -n "$EXCLUDE_FILE" ]; then
+  case "$EXCLUDE_FILE" in /*) ;; *) EXCLUDE_FILE="$DS_STRATEGY/$EXCLUDE_FILE" ;; esac
+  if ! grep -qxF 'current/.smoke-cache.json' "$EXCLUDE_FILE" 2>/dev/null; then
+    mkdir -p "$(dirname "$EXCLUDE_FILE")" 2>/dev/null \
+      && printf '%s\n' 'current/.smoke-cache.json' >> "$EXCLUDE_FILE" 2>/dev/null || true
+  fi
+fi
 
 echo "extended smoke cached → $CACHE_FILE (elapsed ${ELAPSED}s)" >&2
