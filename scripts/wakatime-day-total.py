@@ -3,11 +3,17 @@
 
 Usage: wakatime-day-total.py YYYY-MM-DD
 
-Reads the summaries endpoint, not `wakatime-cli --today`: the CLI reads the
-statusbar endpoint, which omits the AI Coding category (issue #859), returns
-an empty line with exit 0 on some installs (issue #1414), and can only answer
-for the current day, so a Day Close after midnight got the wrong day
-(issue #1398).
+Past days are read from the summaries endpoint, not `wakatime-cli --today`:
+the CLI returns an empty line with exit 0 on some installs (issue #1414) and
+can only answer for the current day, so a Day Close after midnight got the
+wrong day (issue #1398).
+
+WakaTime now rejects plugin API keys (`waka_...`) on the summaries endpoint
+with HTTP 403 ("API Keys are only for plugins, use your personal oauth token").
+The statusbar endpoint still accepts them and, unlike the CLI output seen in
+issue #859, includes the AI Coding category in its grand total. So the current
+day is read from the statusbar endpoint; a past day needs an OAuth token in
+WAKATIME_OAUTH_TOKEN (sent as Bearer) and otherwise reports the real reason.
 
 Exit 0: stdout is the total seconds (integer, > 0).
 Exit 3: no value; stdout is a short reason in parentheses for the caller to
@@ -20,6 +26,7 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.request
 from datetime import date
 
@@ -97,19 +104,37 @@ def main():
         print(f"wakatime-day-total: not a YYYY-MM-DD date: {target!r}", file=sys.stderr)
         sys.exit(2)
 
-    api_key = find_api_key()
-    if not api_key:
-        no_value(
-            "WAKATIME_API_KEY not found — use Neon fallback: domain_event coding_time"
-        )
-    url = f"https://wakatime.com/api/v1/users/current/summaries?start={target}&end={target}"
-    auth = base64.b64encode(f"{api_key}:".encode()).decode()
-    req = urllib.request.Request(
-        url, headers={"Authorization": f"Basic {auth}", "Accept": "application/json"}
-    )
+    is_today = target == date.today().isoformat()
+    oauth_token = os.environ.get("WAKATIME_OAUTH_TOKEN", "").strip()
+    if oauth_token and not is_today:
+        headers = {"Authorization": f"Bearer {oauth_token}"}
+    else:
+        api_key = find_api_key()
+        if not api_key:
+            no_value(
+                "WAKATIME_API_KEY not found — use Neon fallback: domain_event coding_time"
+            )
+        auth = base64.b64encode(f"{api_key}:".encode()).decode()
+        headers = {"Authorization": f"Basic {auth}"}
+    headers["Accept"] = "application/json"
+
+    if is_today and not oauth_token:
+        url = "https://wakatime.com/api/v1/users/current/status_bar/today"
+    else:
+        url = f"https://wakatime.com/api/v1/users/current/summaries?start={target}&end={target}"
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 403 and not is_today:
+            no_value(
+                "WakaTime refuses plugin API keys for past days (HTTP 403); "
+                "set WAKATIME_OAUTH_TOKEN or use Neon fallback: domain_event coding_time"
+            )
+        no_value(
+            f"WakaTime API error: {exc} — use Neon fallback: domain_event coding_time"
+        )
     # OSError covers URLError and socket timeouts on every Python 3 version;
     # ValueError covers JSONDecodeError and UnicodeDecodeError.
     except (OSError, ValueError) as exc:
@@ -117,7 +142,14 @@ def main():
             f"WakaTime API error: {exc} — use Neon fallback: domain_event coding_time"
         )
 
-    seconds = day_seconds(body, target)
+    if is_today and not oauth_token:
+        # statusbar shape: {"data": {"grand_total": {"total_seconds": N}}}
+        total = body.get("data", {}).get("grand_total") if isinstance(body, dict) else None
+        seconds = total.get("total_seconds") if isinstance(total, dict) else None
+        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+            seconds = None
+    else:
+        seconds = day_seconds(body, target)
     if seconds is None:
         no_value(f"no WakaTime entry for {target}")
     if seconds <= 0:
